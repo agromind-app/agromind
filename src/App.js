@@ -7,119 +7,14 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from "firebase/auth";
-import { doc, onSnapshot, getDoc, setDoc, updateDoc, increment, serverTimestamp, collection, addDoc } from "firebase/firestore";
+import {
+  doc, onSnapshot, getDoc, setDoc,
+  updateDoc, increment, serverTimestamp,
+  collection, addDoc
+} from "firebase/firestore";
 import MapaPage from "./mapapage";
 
-// ── Sistema de Créditos ──────────────────────────────────────
-const PLANOS = {
-  starter_mensal:  { nome:"Starter Mensal",  creditos:20,  preco:49,  periodo:"mensal" },
-  pro_mensal:      { nome:"Pro Mensal",       creditos:100, preco:99,  periodo:"mensal" },
-  starter_anual:   { nome:"Starter Anual",    creditos:20,  preco:39,  periodo:"anual"  },
-  pro_anual:       { nome:"Pro Anual",        creditos:100, preco:79,  periodo:"anual"  },
-};
-
-async function criarUsuarioFirestore(uid, email, nome) {
-  const ref = doc(db, "usuarios", uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) return snap.data();
-  const dados = { uid, email, nome, plano:"gratuito", creditos:3, creditosUsados:0, totalConsultas:0, criadoEm:serverTimestamp() };
-  await setDoc(ref, dados);
-  return dados;
-}
-
-async function descontarCredito(uid, descricao="Consulta de imóvel") {
-  const ref = doc(db, "usuarios", uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists() || snap.data().creditos <= 0) return { sucesso:false, motivo:"sem_creditos" };
-  const dados = snap.data();
-  await updateDoc(ref, { creditos:increment(-1), creditosUsados:increment(1), totalConsultas:increment(1), ultimaConsulta:serverTimestamp() });
-  await addDoc(collection(db,"usuarios",uid,"consultas"), { descricao, creditosAntes:dados.creditos, creditosDepois:dados.creditos-1, criadoEm:serverTimestamp() });
-  return { sucesso:true, creditos:dados.creditos-1 };
-}
-
-async function adicionarCreditosExtras(uid, quantidade, planoAtual) {
-  const ref = doc(db, "usuarios", uid);
-  await updateDoc(ref, { creditos:increment(quantidade) });
-  await addDoc(collection(db,"usuarios",uid,"pagamentos"), { tipo:"creditos_extras", quantidade, valorTotal:quantidade*(planoAtual?.includes("anual")?1.50:2.00), criadoEm:serverTimestamp(), status:"aprovado" });
-  return { sucesso:true };
-}
-
-function useCredits(user) {
-  const [creditos, setCreditos] = useState(0);
-  const [plano, setPlano] = useState("gratuito");
-  const [loading, setLoading] = useState(true);
-  const [semCreditos, setSemCreditos] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-    criarUsuarioFirestore(user.uid, user.email, user.displayName||"Usuário");
-    const ref = doc(db, "usuarios", user.uid);
-    const unsub = onSnapshot(ref, (snap) => {
-      if (snap.exists()) {
-        const d = snap.data();
-        setCreditos(d.creditos||0);
-        setPlano(d.plano||"gratuito");
-        setSemCreditos((d.creditos||0)<=0);
-      }
-      setLoading(false);
-    });
-    return unsub;
-  }, [user]);
-
-  const usarCredito = useCallback(async (descricao) => {
-    if (!user) return { sucesso:false };
-    if (creditos<=0) { setSemCreditos(true); return { sucesso:false, motivo:"sem_creditos" }; }
-    return await descontarCredito(user.uid, descricao);
-  }, [user, creditos]);
-
-  const corCreditos = creditos>10?"#22c55e":creditos>3?"#fbbf24":"#ef4444";
-  return { creditos, plano, loading, semCreditos, corCreditos, usarCredito };
-}
-
-// ── Modal Sem Créditos ───────────────────────────────────────
-function SemCreditosModal({ user, plano, onClose, onUpgrade }) {
-  const [comprando, setComprando] = useState(false);
-  const [qtd, setQtd] = useState(10);
-  const isAnual = plano?.includes("anual");
-  const precoUnit = isAnual ? 1.50 : 2.00;
-
-  const comprarExtras = async () => {
-    setComprando(true);
-    await adicionarCreditosExtras(user.uid, qtd, plano);
-    setComprando(false);
-    onClose();
-    alert(`✅ ${qtd} créditos adicionados!`);
-  };
-
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}>
-      <div style={{background:"#111d11",border:"1px solid #1e3a1e",borderRadius:20,padding:"32px 28px",maxWidth:400,width:"100%"}}>
-        <div style={{textAlign:"center",marginBottom:20}}>
-          <div style={{fontSize:48,marginBottom:8}}>⚡</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#e8f5e9",marginBottom:6}}>Seus créditos acabaram!</div>
-          <div style={{fontSize:13,color:"#6b9e6b"}}>Escolha uma opção para continuar.</div>
-        </div>
-        <div style={{background:"#12803f15",border:"1px solid #12803f40",borderRadius:12,padding:"16px",marginBottom:12}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#4ade80",marginBottom:10}}>⚡ Comprar créditos extras</div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <button onClick={()=>setQtd(q=>Math.max(5,q-5))} style={{width:32,height:32,borderRadius:8,border:"1px solid #1e3a1e",background:"#0a0f0a",color:"#e8f5e9",cursor:"pointer",fontSize:16}}>−</button>
-            <div style={{flex:1,textAlign:"center"}}>
-              <div style={{fontSize:22,fontWeight:900,color:"#22c55e"}}>{qtd}</div>
-              <div style={{fontSize:10,color:"#6b9e6b"}}>créditos · R$ {(qtd*precoUnit).toFixed(2)}</div>
-            </div>
-            <button onClick={()=>setQtd(q=>q+5)} style={{width:32,height:32,borderRadius:8,border:"1px solid #1e3a1e",background:"#0a0f0a",color:"#e8f5e9",cursor:"pointer",fontSize:16}}>+</button>
-          </div>
-          <button onClick={comprarExtras} disabled={comprando} style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#12803f,#16a34a)",color:"#e8f5e9",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-            {comprando?"⏳ Processando...":"💳 Comprar agora"}
-          </button>
-        </div>
-        <button onClick={onUpgrade} style={{width:"100%",padding:"10px",borderRadius:10,border:"1px solid #fbbf2440",background:"#fbbf2410",color:"#fbbf24",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:8}}>🚀 Ver planos →</button>
-        <button onClick={onClose} style={{width:"100%",padding:"10px",borderRadius:10,border:"1px solid #1e3a1e",background:"transparent",color:"#6b9e6b",fontSize:13,cursor:"pointer"}}>Cancelar</button>
-      </div>
-    </div>
-  );
-}
-
+// ─── Cores ────────────────────────────────────────────────────
 const C = {
   bg:"#0a0f0a",surface:"#0f1a0f",card:"#111d11",
   border:"#1e3a1e",borderLight:"#2a4f2a",
@@ -129,35 +24,37 @@ const C = {
   yellow:"#fbbf24",red:"#ef4444",orange:"#f97316",blue:"#3b82f6",
 };
 
+// ─── Estilos ──────────────────────────────────────────────────
 const S = {
   app:{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"},
   authPage:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`radial-gradient(ellipse at 30% 20%, ${C.green1}40, transparent 60%), radial-gradient(ellipse at 80% 80%, ${C.green2}20, transparent 50%), ${C.bg}`,padding:20},
   authBox:{background:C.card,border:`1px solid ${C.border}`,borderRadius:24,padding:"40px 36px",width:"100%",maxWidth:420,boxShadow:`0 0 60px ${C.green1}40`},
-  authLogoIcon:{width:56,height:56,borderRadius:16,margin:"0 auto 12px",background:`linear-gradient(135deg, ${C.green2}, ${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,boxShadow:`0 0 30px ${C.green2}60`},
-  authLogoText:{fontSize:26,fontWeight:900,letterSpacing:"-0.5px",background:`linear-gradient(135deg, ${C.accentBright}, ${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"},
+  authLogoIcon:{width:56,height:56,borderRadius:16,margin:"0 auto 12px",background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28},
+  authLogoText:{fontSize:26,fontWeight:900,letterSpacing:"-0.5px",background:`linear-gradient(135deg,${C.accentBright},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"},
   label:{fontSize:12,color:C.textMuted,marginBottom:6,display:"block",fontWeight:600},
   input:{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"},
-  btn:{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:`linear-gradient(135deg, ${C.green2}, ${C.green3})`,color:C.text,fontWeight:700,fontSize:15,cursor:"pointer",marginTop:8,boxShadow:`0 4px 20px ${C.green2}50`},
+  btn:{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:700,fontSize:15,cursor:"pointer",marginTop:8},
   errorBox:{background:`${C.red}15`,border:`1px solid ${C.red}40`,borderRadius:8,padding:"10px 14px",fontSize:13,color:C.red,marginBottom:16},
   successBox:{background:`${C.accent}15`,border:`1px solid ${C.accent}40`,borderRadius:8,padding:"10px 14px",fontSize:13,color:C.accentBright,marginBottom:16},
   chip:(c)=>({display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:20,background:`${c}20`,color:c,border:`1px solid ${c}30`}),
   card:{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px"},
   chartBar:(p,c)=>({height:"100%",width:`${p}%`,background:`linear-gradient(90deg,${c}80,${c})`,borderRadius:3}),
-  scoreRing:{width:110,height:110,borderRadius:"50%",background:`conic-gradient(${C.accent} 0deg, ${C.accent} ${0.78*360}deg, ${C.border} ${0.78*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px"},
+  scoreRing:{width:110,height:110,borderRadius:"50%",background:`conic-gradient(${C.accent} 0deg,${C.accent} ${0.78*360}deg,${C.border} ${0.78*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px"},
   scoreInner:{width:82,height:82,borderRadius:"50%",background:C.card,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"},
   precipBar:{display:"flex",alignItems:"flex-end",gap:3,height:70,marginBottom:6},
   precipCol:(h)=>({flex:1,height:`${h}%`,background:`linear-gradient(180deg,${C.blue}90,${C.blue}40)`,borderRadius:"3px 3px 0 0",minHeight:3}),
-  tableTh:{padding:"10px 10px",fontSize:10,fontWeight:700,color:C.textMuted,letterSpacing:"0.5px",textTransform:"uppercase",textAlign:"left"},
-  tableTd:{padding:"10px 10px",fontSize:12,borderBottom:`1px solid ${C.border}`,color:C.text},
+  tableTh:{padding:"10px",fontSize:10,fontWeight:700,color:C.textMuted,letterSpacing:"0.5px",textTransform:"uppercase",textAlign:"left"},
+  tableTd:{padding:"10px",fontSize:12,borderBottom:`1px solid ${C.border}`,color:C.text},
 };
 
+// ─── Navegação ────────────────────────────────────────────────
 const NAV=[
   {section:"Principal",items:[{icon:"⊞",label:"Dashboard",id:"dashboard"},{icon:"🔍",label:"Consultar Imóvel",id:"consulta"},{icon:"🗺️",label:"Mapa Interativo",id:"mapa"},{icon:"🤖",label:"IA & Score",id:"ia"}]},
   {section:"Ambiental",items:[{icon:"🌿",label:"Embargos IBAMA",id:"embargos"},{icon:"📡",label:"PRODES/INPE",id:"prodes"},{icon:"💧",label:"Precipitação",id:"precipitacao"}]},
   {section:"Sistema",items:[{icon:"💬",label:"WhatsApp Bot",id:"whatsapp"},{icon:"💳",label:"Planos & Preços",id:"planos"},{icon:"🛡️",label:"Painel Admin",id:"admin"}]},
 ];
 
-const BOTTOM_NAV = [
+const BOTTOM_NAV=[
   {icon:"⊞",label:"Início",id:"dashboard"},
   {icon:"🗺️",label:"Mapa",id:"mapa"},
   {icon:"🔍",label:"Buscar",id:"consulta"},
@@ -165,6 +62,112 @@ const BOTTOM_NAV = [
   {icon:"🛡️",label:"Admin",id:"admin"},
 ];
 
+// ─── Sistema de Créditos ──────────────────────────────────────
+async function criarUsuarioFS(uid, email, nome) {
+  try {
+    const ref = doc(db,"usuarios",uid);
+    const snap = await getDoc(ref);
+    if (snap.exists()) return snap.data();
+    const dados = {uid,email,nome,plano:"gratuito",creditos:3,creditosUsados:0,totalConsultas:0,criadoEm:serverTimestamp()};
+    await setDoc(ref,dados);
+    return dados;
+  } catch(e) { console.error("Erro ao criar usuário:",e); }
+}
+
+async function descontarCreditoFS(uid, descricao="Consulta") {
+  try {
+    const ref = doc(db,"usuarios",uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()||snap.data().creditos<=0) return {sucesso:false,motivo:"sem_creditos"};
+    const dados = snap.data();
+    await updateDoc(ref,{creditos:increment(-1),creditosUsados:increment(1),totalConsultas:increment(1),ultimaConsulta:serverTimestamp()});
+    await addDoc(collection(db,"usuarios",uid,"consultas"),{descricao,creditosAntes:dados.creditos,creditosDepois:dados.creditos-1,criadoEm:serverTimestamp()});
+    return {sucesso:true,creditos:dados.creditos-1};
+  } catch(e) { console.error("Erro ao descontar:",e); return {sucesso:false}; }
+}
+
+async function adicionarExtrasFS(uid, qtd, plano) {
+  try {
+    await updateDoc(doc(db,"usuarios",uid),{creditos:increment(qtd)});
+    await addDoc(collection(db,"usuarios",uid,"pagamentos"),{tipo:"extras",quantidade:qtd,valor:qtd*(plano?.includes("anual")?1.50:2.00),criadoEm:serverTimestamp(),status:"aprovado"});
+    return {sucesso:true};
+  } catch(e) { return {sucesso:false}; }
+}
+
+function useCredits(user) {
+  const [creditos,setCreditos] = useState(0);
+  const [plano,setPlano] = useState("gratuito");
+  const [loading,setLoading] = useState(true);
+
+  useEffect(()=>{
+    if (!user?.uid) return;
+    criarUsuarioFS(user.uid,user.email,user.displayName||"Usuário");
+    const ref = doc(db,"usuarios",user.uid);
+    const unsub = onSnapshot(ref,(snap)=>{
+      if (snap.exists()) {
+        const d = snap.data();
+        setCreditos(d.creditos||0);
+        setPlano(d.plano||"gratuito");
+      }
+      setLoading(false);
+    });
+    return unsub;
+  },[user]);
+
+  const usarCredito = useCallback(async(desc)=>{
+    if (!user?.uid) return {sucesso:false};
+    return await descontarCreditoFS(user.uid,desc);
+  },[user]);
+
+  const cor = creditos>10?"#22c55e":creditos>3?"#fbbf24":"#ef4444";
+  return {creditos,plano,loading,cor,usarCredito};
+}
+
+// ─── Modal Sem Créditos ───────────────────────────────────────
+function SemCreditosModal({user,plano,onClose,onUpgrade}) {
+  const [qtd,setQtd] = useState(10);
+  const [loading,setLoading] = useState(false);
+  const isAnual = plano?.includes("anual");
+  const preco = isAnual?1.50:2.00;
+
+  const comprar = async()=>{
+    setLoading(true);
+    await adicionarExtrasFS(user.uid,qtd,plano);
+    setLoading(false);
+    onClose();
+    alert(`✅ ${qtd} créditos adicionados!`);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:"28px 24px",maxWidth:380,width:"100%"}}>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:44,marginBottom:8}}>⚡</div>
+          <div style={{fontSize:19,fontWeight:800,color:C.text,marginBottom:6}}>Créditos esgotados!</div>
+          <div style={{fontSize:13,color:C.textMuted}}>Escolha como continuar consultando.</div>
+        </div>
+        <div style={{background:`${C.green2}15`,border:`1px solid ${C.green2}40`,borderRadius:12,padding:"16px",marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.accentBright,marginBottom:10}}>⚡ Comprar créditos extras</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <button onClick={()=>setQtd(q=>Math.max(5,q-5))} style={{width:32,height:32,borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,color:C.text,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+            <div style={{flex:1,textAlign:"center"}}>
+              <div style={{fontSize:22,fontWeight:900,color:C.accent}}>{qtd}</div>
+              <div style={{fontSize:10,color:C.textMuted}}>créditos · R$ {(qtd*preco).toFixed(2)}</div>
+            </div>
+            <button onClick={()=>setQtd(q=>q+5)} style={{width:32,height:32,borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,color:C.text,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+          </div>
+          <button onClick={comprar} disabled={loading} style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:700,fontSize:13,cursor:"pointer",opacity:loading?0.7:1}}>
+            {loading?"⏳ Processando...":"💳 Comprar agora"}
+          </button>
+        </div>
+        <button onClick={onUpgrade} style={{width:"100%",padding:"10px",borderRadius:10,border:`1px solid ${C.yellow}40`,background:`${C.yellow}10`,color:C.yellow,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:8}}>🚀 Ver planos completos →</button>
+        <button onClick={onClose} style={{width:"100%",padding:"10px",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,fontSize:13,cursor:"pointer"}}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dados ────────────────────────────────────────────────────
 const precipData=[45,70,30,90,55,20,80,65,40,75,50,35,60,88,42,30,55,70,45,60,30,85,65,50,40,75,60,50,45,70];
 const recentConsultas=[
   {fazenda:"Faz. Horizonte Verde",car:"MT-5107040-9B4D7A...",data:"20/04/2026",status:"ok"},
@@ -173,7 +176,8 @@ const recentConsultas=[
   {fazenda:"Agropec. Santa Rosa",car:"MS-5003108-D7F3B2...",data:"17/04/2026",status:"embargo"},
 ];
 
-function SearchBar(){
+// ─── Componentes ──────────────────────────────────────────────
+function SearchBar() {
   const[type,setType]=useState("car");
   const[val,setVal]=useState("");
   return(
@@ -184,21 +188,19 @@ function SearchBar(){
         ))}
       </div>
       <input style={{flex:1,minWidth:100,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 14px",color:C.text,fontSize:13,outline:"none",height:42}} placeholder={type==="car"?"Ex: MT-5107040-9B4D7A...":type==="gps"?"Ex: -11.8456, -55.1987":"Ex: Fazenda Horizonte Verde"} value={val} onChange={e=>setVal(e.target.value)}/>
-      <button style={{background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 20px",cursor:"pointer",height:42,whiteSpace:"nowrap",boxShadow:`0 4px 14px ${C.green2}50`,flexShrink:0}}>🔍 Consultar</button>
+      <button style={{background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 20px",cursor:"pointer",height:42,whiteSpace:"nowrap",flexShrink:0}}>🔍 Consultar</button>
     </div>
   );
 }
 
-function Dashboard({user}){
+function Dashboard({user}) {
   return(
     <div>
-      <div style={{...S.card,background:`linear-gradient(135deg, ${C.card} 0%, ${C.green1}40 50%, ${C.card} 100%)`,borderRadius:20,padding:"24px 20px",marginBottom:20,position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:0,right:0,width:200,height:"100%",background:`radial-gradient(ellipse at top right,${C.green2}20,transparent 70%)`,pointerEvents:"none"}}/>
+      <div style={{...S.card,background:`linear-gradient(135deg,${C.card} 0%,${C.green1}40 50%,${C.card} 100%)`,borderRadius:20,padding:"24px 20px",marginBottom:20,position:"relative",overflow:"hidden"}}>
         <div style={{fontSize:"clamp(17px,4vw,24px)",fontWeight:800,marginBottom:6}}>🌿 Bem-vindo, {user?.displayName?.split(" ")[0]||"Usuário"}!</div>
         <div style={{color:C.textMuted,fontSize:13,marginBottom:20}}>CAR · INCRA · SIGEF · IBAMA · PRODES · Score IA</div>
         <SearchBar/>
       </div>
-
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>
         {[{icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},{icon:"🌾",val:"34.291",label:"Imóveis",color:C.yellow},{icon:"🚨",val:"128",label:"Alertas",color:C.red},{icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue}].map((s,i)=>(
           <div key={i} style={{...S.card,display:"flex",alignItems:"center",gap:10,padding:"14px"}}>
@@ -207,7 +209,6 @@ function Dashboard({user}){
           </div>
         ))}
       </div>
-
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginBottom:14}}>
         <div style={S.card}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -227,7 +228,6 @@ function Dashboard({user}){
             </table>
           </div>
         </div>
-
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={S.card}>
             <div style={{fontSize:14,fontWeight:700,marginBottom:12,textAlign:"center"}}>🤖 Score IA Médio</div>
@@ -245,7 +245,6 @@ function Dashboard({user}){
           </div>
         </div>
       </div>
-
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
         <div style={S.card}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -274,7 +273,7 @@ function Dashboard({user}){
   );
 }
 
-function PlanosPage(){
+function PlanosPage() {
   return(
     <div style={{padding:"20px 16px"}}>
       <div style={{textAlign:"center",marginBottom:28}}>
@@ -305,7 +304,7 @@ function PlanosPage(){
   );
 }
 
-function AdminPage(){
+function AdminPage() {
   const users=[{nome:"Carlos Mendes",email:"carlos@email.com",plano:"Anual Pro",consultas:87,status:"ativo"},{nome:"Ana Rodrigues",email:"ana@email.com",plano:"Mensal",consultas:23,status:"ativo"},{nome:"Faz. Pioneira",email:"contato@fazpioneira.com.br",plano:"Anual Pro",consultas:145,status:"ativo"},{nome:"João Pereira",email:"joao@email.com",plano:"Mensal",consultas:8,status:"inativo"}];
   return(
     <div style={{padding:"20px 14px"}}>
@@ -332,7 +331,7 @@ function AdminPage(){
   );
 }
 
-function PlaceholderPage({title,icon,desc}){
+function PlaceholderPage({title,icon,desc}) {
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:300,gap:16,padding:24,textAlign:"center"}}>
       <div style={{fontSize:56}}>{icon}</div>
@@ -343,7 +342,7 @@ function PlaceholderPage({title,icon,desc}){
   );
 }
 
-function AuthScreen(){
+function AuthScreen() {
   const[mode,setMode]=useState("login");
   const[name,setName]=useState("");
   const[email,setEmail]=useState("");
@@ -397,7 +396,8 @@ function AuthScreen(){
   );
 }
 
-function SidebarContent({user,page,setPage,onClose,handleLogout}){
+// ─── Sidebar ──────────────────────────────────────────────────
+function SidebarContent({user,page,setPage,onClose,handleLogout,creditos,cor}) {
   const initials=user.displayName?user.displayName.split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase():user.email.substring(0,2).toUpperCase();
   return(
     <>
@@ -430,20 +430,18 @@ function SidebarContent({user,page,setPage,onClose,handleLogout}){
           <div style={{fontSize:11,color:C.textMuted,marginBottom:8}}>{user.email}</div>
           <button style={{width:"100%",padding:"7px 0",borderRadius:8,background:`${C.red}15`,border:`1px solid ${C.red}30`,color:C.red,fontSize:12,fontWeight:600,cursor:"pointer"}} onClick={handleLogout}>🚪 Sair da conta</button>
         </div>
-        <div style={{background:`linear-gradient(135deg,${C.green1},${C.green2})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"10px 14px"}}>
-          <div style={{fontSize:12,fontWeight:700,color:C.accentBright}}>⭐ PRO ANUAL</div>
-          <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>Consultas ilimitadas · Ativo</div>
-        </div>
-        <div style={{background:`${C.green1}30`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"10px 14px",marginTop:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        {/* Badge de créditos */}
+        <div style={{background:`${C.green1}30`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:12,color:C.textMuted}}>⚡ Créditos</span>
-          <span style={{fontSize:14,fontWeight:800,color:"#22c55e"}}>{creditos||0}</span>
+          <span style={{fontSize:16,fontWeight:900,color:cor||C.accent}}>{creditos||0}</span>
         </div>
       </div>
     </>
   );
 }
 
-export default function App(){
+// ─── App Principal ────────────────────────────────────────────
+export default function App() {
   const[user,setUser]=useState(null);
   const[loading,setLoading]=useState(true);
   const[page,setPage]=useState("dashboard");
@@ -452,7 +450,7 @@ export default function App(){
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setLoading(false);});return unsub;},[]);
 
-  const { creditos, corCreditos, plano } = useCredits(user||{uid:null});
+  const {creditos,plano,cor} = useCredits(user);
 
   if(loading)return(<div style={{...S.authPage,flexDirection:"column",gap:16}}><div style={{fontSize:48}}>🌿</div><div style={{fontSize:18,fontWeight:700,color:C.accentBright}}>Carregando AGROMIND...</div></div>);
   if(!user)return <AuthScreen/>;
@@ -460,6 +458,7 @@ export default function App(){
   const handleLogout=async()=>{await signOut(auth);setUser(null);};
   const initials=user.displayName?user.displayName.split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase():user.email.substring(0,2).toUpperCase();
   const allItems=NAV.flatMap(s=>s.items);
+  const isFullPage=page==="mapa"||page==="planos"||page==="admin";
 
   const pageMap={
     dashboard:<Dashboard user={user}/>,
@@ -474,8 +473,6 @@ export default function App(){
     admin:<AdminPage/>,
   };
 
-  const isFullPage = page==="mapa"||page==="planos"||page==="admin";
-
   return(
     <div style={S.app}>
       <style>{`
@@ -486,44 +483,17 @@ export default function App(){
         ::-webkit-scrollbar-track{background:#0a0f0a;}
         ::-webkit-scrollbar-thumb{background:#1e3a1e;border-radius:3px;}
         input::placeholder{color:#3d6b3d;}
-
-        .agro-sidebar{
-          position:fixed;top:0;left:0;width:240px;height:100vh;
-          background:${C.surface};border-right:1px solid ${C.border};
-          display:flex;flex-direction:column;z-index:100;
-        }
-        .agro-main{
-          margin-left:240px;min-height:100vh;
-          display:flex;flex-direction:column;
-        }
-        .agro-topbar{
-          background:${C.surface}ee;backdrop-filter:blur(12px);
-          border-bottom:1px solid ${C.border};
-          padding:0 24px;height:64px;
-          display:flex;align-items:center;justify-content:space-between;
-          position:sticky;top:0;z-index:50;
-        }
+        .agro-sidebar{position:fixed;top:0;left:0;width:240px;height:100vh;background:${C.surface};border-right:1px solid ${C.border};display:flex;flex-direction:column;z-index:100;}
+        .agro-main{margin-left:240px;min-height:100vh;display:flex;flex-direction:column;}
+        .agro-topbar{background:${C.surface}ee;backdrop-filter:blur(12px);border-bottom:1px solid ${C.border};padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
         .agro-content{padding:24px;flex:1;}
         .agro-content-full{flex:1;}
         .agro-hamburger{display:none;}
-        .agro-overlay{
-          display:none;position:fixed;inset:0;
-          background:rgba(0,0,0,0.65);z-index:200;
-          backdrop-filter:blur(2px);
-        }
+        .agro-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:200;backdrop-filter:blur(2px);}
         .agro-overlay.open{display:block;}
-        .agro-drawer{
-          display:none;position:fixed;
-          top:0;left:0;bottom:0;width:280px;
-          background:${C.surface};
-          z-index:300;flex-direction:column;
-          transform:translateX(-100%);
-          transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);
-          overflow:hidden;
-        }
+        .agro-drawer{display:none;position:fixed;top:0;left:0;bottom:0;width:280px;background:${C.surface};z-index:300;flex-direction:column;transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);overflow:hidden;}
         .agro-drawer.open{transform:translateX(0);}
         .agro-bottom-nav{display:none;}
-
         @media(max-width:768px){
           .agro-sidebar{display:none!important;}
           .agro-hamburger{display:flex!important;}
@@ -531,53 +501,37 @@ export default function App(){
           .agro-main{margin-left:0!important;width:100%!important;}
           .agro-content{padding:14px 12px 80px!important;}
           .agro-content-full{padding-bottom:64px;}
-          .agro-bottom-nav{
-            display:flex!important;
-            position:fixed;bottom:0;left:0;right:0;
-            background:${C.surface};
-            border-top:1px solid ${C.border};
-            z-index:100;height:64px;
-          }
+          .agro-bottom-nav{display:flex!important;position:fixed;bottom:0;left:0;right:0;background:${C.surface};border-top:1px solid ${C.border};z-index:100;height:64px;}
         }
         @supports(padding-bottom:env(safe-area-inset-bottom)){
           @media(max-width:768px){
-            .agro-bottom-nav{
-              height:calc(64px + env(safe-area-inset-bottom));
-              padding-bottom:env(safe-area-inset-bottom);
-            }
+            .agro-bottom-nav{height:calc(64px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);}
           }
         }
       `}</style>
 
-      {/* Overlay */}
       <div className={`agro-overlay ${drawerOpen?"open":""}`} onClick={()=>setDrawerOpen(false)}/>
 
-      {/* Drawer mobile */}
       <div className={`agro-drawer ${drawerOpen?"open":""}`}>
-        <SidebarContent user={user} page={page} setPage={setPage} onClose={()=>setDrawerOpen(false)} handleLogout={handleLogout}/>
+        <SidebarContent user={user} page={page} setPage={setPage} onClose={()=>setDrawerOpen(false)} handleLogout={handleLogout} creditos={creditos} cor={cor}/>
       </div>
 
-      {/* Sidebar desktop */}
       <aside className="agro-sidebar">
-        <SidebarContent user={user} page={page} setPage={setPage} handleLogout={handleLogout}/>
+        <SidebarContent user={user} page={page} setPage={setPage} handleLogout={handleLogout} creditos={creditos} cor={cor}/>
       </aside>
 
-      {/* Main */}
       <div className="agro-main">
-        {/* Topbar */}
         <div className="agro-topbar">
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <button className="agro-hamburger" onClick={()=>setDrawerOpen(true)}
-              style={{width:40,height:40,borderRadius:10,background:C.card,border:`1px solid ${C.border}`,color:C.text,cursor:"pointer",fontSize:20,alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1}}>
-              ☰
-            </button>
-            <div style={{fontSize:"clamp(14px,3vw,17px)",fontWeight:700}}>
-              {allItems.find(i=>i.id===page)?.label||"Dashboard"}
-            </div>
+              style={{width:40,height:40,borderRadius:10,background:C.card,border:`1px solid ${C.border}`,color:C.text,cursor:"pointer",fontSize:20,alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1}}>☰</button>
+            <div style={{fontSize:"clamp(14px,3vw,17px)",fontWeight:700}}>{allItems.find(i=>i.id===page)?.label||"Dashboard"}</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{width:34,height:34,borderRadius:8,background:C.card,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",fontSize:15}}>
-              🔔<div style={{position:"absolute",top:5,right:5,width:7,height:7,borderRadius:"50%",background:C.accent,border:`1.5px solid ${C.surface}`}}/>
+            {/* Badge créditos mobile */}
+            <div style={{display:"flex",alignItems:"center",gap:4,background:`${cor||C.accent}15`,border:`1px solid ${cor||C.accent}40`,borderRadius:20,padding:"4px 10px"}}>
+              <span style={{fontSize:11}}>⚡</span>
+              <span style={{fontSize:12,fontWeight:700,color:cor||C.accent}}>{creditos}</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 10px 5px 5px",cursor:"pointer"}}>
               <div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{initials}</div>
@@ -586,13 +540,11 @@ export default function App(){
           </div>
         </div>
 
-        {/* Conteúdo */}
         <div className={isFullPage?"agro-content-full":"agro-content"}>
           {pageMap[page]||pageMap.dashboard}
         </div>
       </div>
 
-      {/* Bottom Nav mobile */}
       <nav className="agro-bottom-nav">
         {BOTTOM_NAV.map(item=>(
           <div key={item.id} onClick={()=>setPage(item.id)}
@@ -603,8 +555,7 @@ export default function App(){
         ))}
       </nav>
 
-      {/* Modal sem créditos */}
-      {showSemCreditos && (
+      {showSemCreditos&&(
         <SemCreditosModal
           user={user}
           plano={plano}
