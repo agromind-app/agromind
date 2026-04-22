@@ -1,0 +1,623 @@
+import { useState, useEffect } from "react";
+import { auth } from "./firebase";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+} from "firebase/auth";
+import MapaPage from "./mapapage";
+
+const C = {
+  bg:"#0a0f0a",surface:"#0f1a0f",card:"#111d11",
+  border:"#1e3a1e",borderLight:"#2a4f2a",
+  green1:"#0d5c2e",green2:"#12803f",green3:"#16a34a",
+  accent:"#22c55e",accentBright:"#4ade80",
+  text:"#e8f5e9",textMuted:"#6b9e6b",textDim:"#3d6b3d",
+  yellow:"#fbbf24",red:"#ef4444",orange:"#f97316",blue:"#3b82f6",
+};
+
+const NAV=[
+  {section:"Principal",items:[
+    {icon:"⊞",label:"Painel",id:"dashboard"},
+    {icon:"🔍",label:"Consultar",id:"consulta"},
+    {icon:"🗺️",label:"Mapa",id:"mapa"},
+    {icon:"🤖",label:"IA & Score",id:"ia"},
+  ]},
+  {section:"Ambiental",items:[
+    {icon:"🌿",label:"IBAMA",id:"embargos"},
+    {icon:"📡",label:"PRODES",id:"prodes"},
+    {icon:"💧",label:"Chuvas",id:"precipitacao"},
+  ]},
+  {section:"Sistema",items:[
+    {icon:"💬",label:"WhatsApp",id:"whatsapp"},
+    {icon:"💳",label:"Planos",id:"planos"},
+    {icon:"🛡️",label:"Admin",id:"admin"},
+  ]},
+];
+
+// Itens que aparecem no bottom nav mobile (os mais usados)
+const BOTTOM_NAV_ITEMS = [
+  {icon:"⊞",label:"Painel",id:"dashboard"},
+  {icon:"🔍",label:"Consultar",id:"consulta"},
+  {icon:"🗺️",label:"Mapa",id:"mapa"},
+  {icon:"🤖",label:"IA",id:"ia"},
+];
+
+const ALL_ITEMS = NAV.flatMap(s=>s.items);
+const precipData=[45,70,30,90,55,20,80,65,40,75,50,35,60,88,42,30,55,70,45,60,30,85,65,50,40,75,60,50,45,70];
+const recentConsultas=[
+  {fazenda:"Faz. Horizonte Verde",car:"MT-5107040-9B4D7A...",data:"20/04/2026",status:"ok"},
+  {fazenda:"Sítio Bela Vista",car:"PA-1502301-AB3D9F...",data:"19/04/2026",status:"alerta"},
+  {fazenda:"Fazenda São João",car:"GO-5208004-C4E2A1...",data:"18/04/2026",status:"ok"},
+  {fazenda:"Agropec. Santa Rosa",car:"MS-5003108-D7F3B2...",data:"17/04/2026",status:"embargo"},
+];
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return isMobile;
+}
+
+function chip(txt, color) {
+  return (
+    <span style={{display:"inline-flex",alignItems:"center",fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:20,background:`${color}20`,color,border:`1px solid ${color}30`,whiteSpace:"nowrap"}}>
+      {txt}
+    </span>
+  );
+}
+
+function SearchBar({isMobile}) {
+  const [type, setType] = useState("car");
+  const [val, setVal] = useState("");
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {/* Tipo de busca */}
+      <div style={{display:"flex",background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:3,gap:2}}>
+        {[["car","CAR"],["gps","GPS"],["end","Endereço"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setType(k)} style={{padding:"7px 0",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:type===k?600:400,background:type===k?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:type===k?C.text:C.textMuted,border:"none",flex:1}}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {/* Input + botão */}
+      <div style={{display:"flex",gap:8}}>
+        <input
+          style={{flex:1,minWidth:0,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 14px",color:C.text,fontSize:13,outline:"none",height:44}}
+          placeholder={type==="car"?"Código CAR...":type==="gps"?"Coordenadas GPS...":"Endereço..."}
+          value={val} onChange={e=>setVal(e.target.value)}
+        />
+        <button style={{background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 16px",cursor:"pointer",height:44,whiteSpace:"nowrap",flexShrink:0}}>
+          🔍 Buscar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({user, isMobile}) {
+  return (
+    <div>
+      {/* Hero busca */}
+      <div style={{background:`linear-gradient(135deg,${C.card},${C.green1}40,${C.card})`,border:`1px solid ${C.border}`,borderRadius:16,padding:isMobile?"16px":"28px 32px",marginBottom:16}}>
+        <div style={{fontSize:isMobile?17:24,fontWeight:800,marginBottom:4}}>
+          🌿 Bem-vindo, {user?.displayName?.split(" ")[0]||"Usuário"}!
+        </div>
+        <div style={{color:C.textMuted,fontSize:11,marginBottom:14}}>CAR · INCRA · SIGEF · IBAMA · PRODES · Score IA</div>
+        <SearchBar isMobile={isMobile}/>
+      </div>
+
+      {/* Stats — 2 colunas no mobile, 4 no desktop */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)",gap:10,marginBottom:16}}>
+        {[
+          {icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},
+          {icon:"🌾",val:"34.291",label:"Imóveis",color:C.yellow},
+          {icon:"🚨",val:"128",label:"Alertas",color:C.red},
+          {icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue},
+        ].map((s,i)=>(
+          <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:isMobile?"12px":"14px 16px",display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:32,height:32,borderRadius:8,background:`${s.color}20`,border:`1px solid ${s.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
+              {s.icon}
+            </div>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:isMobile?15:20,fontWeight:800,color:s.color}}>{s.val}</div>
+              <div style={{fontSize:9,color:C.textMuted,lineHeight:1.2}}>{s.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Consultas + Score — empilhado no mobile */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"2fr 1fr",gap:14,marginBottom:14}}>
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <span style={{fontSize:13,fontWeight:700}}>📋 Consultas Recentes</span>
+            {chip("Hoje", C.accent)}
+          </div>
+          {recentConsultas.map((r,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`,gap:8}}>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.fazenda}</div>
+                <div style={{fontSize:10,color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.car} · {r.data}</div>
+              </div>
+              <div style={{flexShrink:0}}>
+                {chip(r.status==="ok"?"✓ OK":r.status==="alerta"?"⚠ Alerta":"⛔ Embargo", r.status==="ok"?C.accent:r.status==="alerta"?C.yellow:C.red)}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{display:"flex",flexDirection:isMobile?"row":"column",gap:14}}>
+          {/* Score IA */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px",textAlign:"center",flex:isMobile?1:undefined}}>
+            <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>🤖 Score IA</div>
+            <div style={{width:80,height:80,borderRadius:"50%",background:`conic-gradient(${C.accent} 0deg,${C.accent} ${0.78*360}deg,${C.border} ${0.78*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}}>
+              <div style={{width:60,height:60,borderRadius:"50%",background:C.card,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                <div style={{fontSize:20,fontWeight:900,color:C.accentBright,lineHeight:1}}>78</div>
+                <div style={{fontSize:9,color:C.textMuted}}>/100</div>
+              </div>
+            </div>
+            <div style={{fontSize:10,color:C.textMuted}}>1.847 hoje</div>
+          </div>
+
+          {/* Alertas — esconde no mobile se Score já tá em row */}
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px",flex:isMobile?1:undefined}}>
+            <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>📡 Alertas</div>
+            {[
+              {msg:"Embargo IBAMA",sub:"Faz. Santa Rosa",color:C.red,icon:"⛔"},
+              {msg:"Desmatamento",sub:"Sítio Bela Vista",color:C.orange,icon:"🛸"},
+              {msg:"Moratória",sub:"Faz. Chapada",color:C.yellow,icon:"🌱"},
+            ].map((a,i)=>(
+              <div key={i} style={{display:"flex",gap:6,padding:"7px 8px",borderRadius:8,marginBottom:5,border:`1px solid ${a.color}40`,background:`${a.color}08`}}>
+                <span style={{fontSize:12}}>{a.icon}</span>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:600,color:a.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.msg}</div>
+                  <div style={{fontSize:9,opacity:0.7,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.sub}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Solo + Chuva */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <span style={{fontSize:12,fontWeight:700}}>🌧️ Precipitação 30 dias</span>
+            {chip("Sinop/MT", C.blue)}
+          </div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:2,height:56,marginBottom:4}}>
+            {precipData.map((v,i)=>(
+              <div key={i} style={{flex:1,height:`${v}%`,background:`linear-gradient(180deg,${C.blue}90,${C.blue}40)`,borderRadius:"2px 2px 0 0",minHeight:2}}/>
+            ))}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            {["01","10","20","30"].map(d=><span key={d} style={{fontSize:9,color:C.textDim}}>{d}</span>)}
+          </div>
+        </div>
+
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px"}}>
+          <div style={{fontSize:12,fontWeight:700,marginBottom:12}}>🌿 Solo</div>
+          {[["Argila",52,C.orange],["Areia",30,C.yellow],["Silte",18,C.accent]].map(([l,p,c])=>(
+            <div key={l} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                <span style={{color:C.textMuted}}>{l}</span>
+                <span style={{fontWeight:700,color:c}}>{p}%</span>
+              </div>
+              <div style={{height:5,background:C.bg,borderRadius:3,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${p}%`,background:`linear-gradient(90deg,${c}80,${c})`,borderRadius:3}}/>
+              </div>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"7px 10px",background:`${C.bg}80`,borderRadius:8,border:`1px solid ${C.border}`}}>
+            <span style={{color:C.textMuted}}>pH do solo</span>
+            <span style={{fontWeight:700,color:C.accentBright}}>6.2 — Ideal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlanosPage({isMobile}) {
+  return (
+    <div style={{padding:isMobile?"16px":"28px 32px"}}>
+      <div style={{textAlign:"center",marginBottom:24}}>
+        <div style={{fontSize:isMobile?20:30,fontWeight:900,marginBottom:6}}>Planos AGROMIND</div>
+        <div style={{color:C.textMuted,fontSize:12}}>Cancele quando quiser · Mais completo que o Dados Fazenda</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:14,maxWidth:900,margin:"0 auto"}}>
+        {[
+          {title:"Starter",price:"49",per:"/mês",featured:false,features:["50 consultas/mês","Dados CAR","Score IA básico","Mapa interativo"]},
+          {title:"Pro Mensal",price:"99",per:"/mês",featured:true,badge:"🔥 MAIS VENDIDO",features:["Consultas ilimitadas","INCRA, IBAMA, PRODES","Score IA avançado","Laudo PDF","Chat IA","WhatsApp Bot"]},
+          {title:"Pro Anual",price:"79",per:"/mês",featured:false,badge:"💰 -20%",features:["Tudo do Pro","Multi-usuários","Alertas automáticos","Suporte prioritário"]},
+        ].map((p,i)=>(
+          <div key={i} style={{background:p.featured?`linear-gradient(160deg,${C.green1},${C.card})`:C.card,border:`1px solid ${p.featured?C.borderLight:C.border}`,borderRadius:18,padding:"24px 18px",position:"relative",boxShadow:p.featured?`0 0 30px ${C.green2}30`:"none",marginTop:p.featured&&!isMobile?0:0}}>
+            {p.badge&&<div style={{position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:`linear-gradient(135deg,${C.accent},${C.green2})`,color:C.bg,fontSize:10,fontWeight:800,padding:"4px 12px",borderRadius:20,whiteSpace:"nowrap"}}>{p.badge}</div>}
+            <div style={{fontSize:14,fontWeight:700,marginBottom:4}}>{p.title}</div>
+            <div style={{fontSize:32,fontWeight:900,color:C.accentBright,lineHeight:1.1}}>R${p.price}</div>
+            <div style={{fontSize:11,color:C.textMuted,marginBottom:14}}>{p.per}</div>
+            {p.features.map(f=><div key={f} style={{display:"flex",gap:8,fontSize:12,marginBottom:6,color:C.textMuted}}><span style={{color:C.accent,flexShrink:0}}>✓</span>{f}</div>)}
+            <button style={{width:"100%",padding:"11px 0",borderRadius:10,border:p.featured?"none":`1px solid ${C.borderLight}`,background:p.featured?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:p.featured?C.text:C.accentBright,fontWeight:700,fontSize:13,cursor:"pointer",marginTop:14}}>
+              {p.featured?"Assinar Agora":"Começar"}
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{textAlign:"center",marginTop:20,fontSize:12,color:C.textMuted}}>💳 PIX · Cartão · Boleto · 🔒 100% seguro</div>
+    </div>
+  );
+}
+
+function AdminPage({isMobile}) {
+  const users=[
+    {nome:"Carlos Mendes",plano:"Anual Pro",consultas:87,status:"ativo"},
+    {nome:"Ana Rodrigues",plano:"Mensal",consultas:23,status:"ativo"},
+    {nome:"Faz. Pioneira",plano:"Anual Pro",consultas:145,status:"ativo"},
+    {nome:"João Pereira",plano:"Mensal",consultas:8,status:"inativo"},
+  ];
+  return (
+    <div style={{padding:isMobile?"16px":"28px 32px"}}>
+      <div style={{marginBottom:18}}>
+        <div style={{fontSize:18,fontWeight:800,marginBottom:2}}>🛡️ Painel Admin</div>
+        <div style={{fontSize:12,color:C.textMuted}}>Visão exclusiva do dono</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3,1fr)",gap:10,marginBottom:18}}>
+        {[
+          {label:"Usuários",val:"1.247",icon:"👥",color:C.accent},
+          {label:"Receita",val:"R$87k",icon:"💰",color:C.yellow},
+          {label:"Consultas",val:"4.821",icon:"🔍",color:C.blue},
+          {label:"Churn",val:"2,1%",icon:"📉",color:C.orange},
+          {label:"Ticket Médio",val:"R$94",icon:"💳",color:C.accentBright},
+          {label:"NPS",val:"72",icon:"⭐",color:C.yellow},
+        ].map((a,i)=>(
+          <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px",borderLeft:`3px solid ${a.color}`}}>
+            <div style={{fontSize:16,marginBottom:3}}>{a.icon}</div>
+            <div style={{fontSize:18,fontWeight:900,color:a.color}}>{a.val}</div>
+            <div style={{fontSize:10,color:C.textMuted}}>{a.label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden"}}>
+        <div style={{padding:"12px 14px",borderBottom:`1px solid ${C.border}`,fontSize:13,fontWeight:700}}>👤 Usuários</div>
+        {users.map((u,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 14px",borderBottom:`1px solid ${C.border}`,gap:8}}>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.nome}</div>
+              <div style={{fontSize:10,color:C.textMuted}}>{u.plano} · {u.consultas} consultas</div>
+            </div>
+            <div style={{flexShrink:0}}>{chip(u.status, u.status==="ativo"?C.accent:C.textDim)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderPage({title,icon,desc}) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:14,padding:20,textAlign:"center"}}>
+      <div style={{fontSize:52}}>{icon}</div>
+      <div style={{fontSize:18,fontWeight:800}}>{title}</div>
+      <div style={{fontSize:13,color:C.textMuted,maxWidth:300}}>{desc}</div>
+      <span style={{fontSize:12,fontWeight:600,padding:"6px 16px",borderRadius:20,background:`${C.accent}20`,color:C.accent,border:`1px solid ${C.accent}30`}}>Em desenvolvimento 🚀</span>
+    </div>
+  );
+}
+
+function AuthScreen() {
+  const [mode,setMode]=useState("login");
+  const [name,setName]=useState("");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [confirm,setConfirm]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [success,setSuccess]=useState("");
+
+  const errMsg=(code)=>({
+    "auth/user-not-found":"E-mail não encontrado.",
+    "auth/wrong-password":"Senha incorreta.",
+    "auth/email-already-in-use":"E-mail já cadastrado.",
+    "auth/weak-password":"Senha muito fraca.",
+    "auth/invalid-email":"E-mail inválido.",
+    "auth/invalid-credential":"E-mail ou senha incorretos.",
+    "auth/too-many-requests":"Muitas tentativas. Aguarde.",
+  }[code]||"Erro inesperado.");
+
+  const handleLogin=async()=>{setError("");setLoading(true);try{await signInWithEmailAndPassword(auth,email,password);}catch(e){setError(errMsg(e.code));}setLoading(false);};
+  const handleRegister=async()=>{setError("");setSuccess("");if(!name.trim())return setError("Digite seu nome.");if(password!==confirm)return setError("Senhas não coincidem.");if(password.length<6)return setError("Senha muito curta.");setLoading(true);try{const c=await createUserWithEmailAndPassword(auth,email,password);await updateProfile(c.user,{displayName:name.trim()});setSuccess("Conta criada!");}catch(e){setError(errMsg(e.code));}setLoading(false);};
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`radial-gradient(ellipse at 30% 20%,${C.green1}40,transparent 60%),${C.bg}`,padding:16}}>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:"28px 20px",width:"100%",maxWidth:400,boxShadow:`0 0 50px ${C.green1}40`}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{width:52,height:52,borderRadius:14,margin:"0 auto 10px",background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>🌿</div>
+          <div style={{fontSize:24,fontWeight:900,background:`linear-gradient(135deg,${C.accentBright},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AGROMIND</div>
+          <div style={{fontSize:12,color:C.textMuted,marginTop:2}}>Inteligência Rural · SaaS</div>
+        </div>
+        <div style={{fontSize:18,fontWeight:800,textAlign:"center",marginBottom:4}}>{mode==="login"?"Entrar":"Criar conta"}</div>
+        <div style={{fontSize:12,color:C.textMuted,textAlign:"center",marginBottom:18}}>{mode==="login"?"Acesse seu painel":"Comece gratuitamente"}</div>
+        {error&&<div style={{background:`${C.red}15`,border:`1px solid ${C.red}40`,borderRadius:8,padding:"9px 12px",fontSize:12,color:C.red,marginBottom:12}}>⚠️ {error}</div>}
+        {success&&<div style={{background:`${C.accent}15`,border:`1px solid ${C.accent}40`,borderRadius:8,padding:"9px 12px",fontSize:12,color:C.accentBright,marginBottom:12}}>✅ {success}</div>}
+        {mode==="register"&&<div style={{marginBottom:12}}><label style={{fontSize:11,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Nome completo</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}} placeholder="Seu nome" value={name} onChange={e=>setName(e.target.value)}/></div>}
+        <div style={{marginBottom:12}}><label style={{fontSize:11,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>E-mail</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}} type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)}/></div>
+        <div style={{marginBottom:mode==="register"?12:0}}><label style={{fontSize:11,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Senha</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}} type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&mode==="login"&&handleLogin()}/></div>
+        {mode==="register"&&<div style={{marginBottom:0}}><label style={{fontSize:11,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Confirmar senha</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}} type="password" placeholder="••••••••" value={confirm} onChange={e=>setConfirm(e.target.value)}/></div>}
+        <button style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:700,fontSize:14,cursor:"pointer",marginTop:14,opacity:loading?0.7:1}} onClick={mode==="login"?handleLogin:handleRegister} disabled={loading}>
+          {loading?"⏳ Aguarde...":mode==="login"?"🚀 Entrar":"✅ Criar conta"}
+        </button>
+        <div style={{textAlign:"center",fontSize:12,color:C.textMuted,marginTop:14}}>
+          {mode==="login"?<>Sem conta? <span style={{color:C.accentBright,cursor:"pointer",fontWeight:600}} onClick={()=>{setMode("register");setError("");}}>Cadastre-se</span></>:<>Tem conta? <span style={{color:C.accentBright,cursor:"pointer",fontWeight:600}} onClick={()=>{setMode("login");setError("");}}>Entrar</span></>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [user,setUser]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [page,setPage]=useState("dashboard");
+  const [sidebarOpen,setSidebarOpen]=useState(false);
+  const isMobile = useIsMobile();
+
+  useEffect(()=>{
+    const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setLoading(false);});
+    return unsub;
+  },[]);
+
+  if(loading)return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:C.bg,gap:12}}>
+      <div style={{fontSize:42}}>🌿</div>
+      <div style={{fontSize:16,fontWeight:700,color:C.accentBright}}>Carregando AGROMIND...</div>
+    </div>
+  );
+
+  if(!user)return <AuthScreen/>;
+
+  const handleLogout=async()=>{await signOut(auth);setUser(null);};
+  const initials=user.displayName?user.displayName.split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase():user.email.substring(0,2).toUpperCase();
+  const currentPage = ALL_ITEMS.find(i=>i.id===page);
+
+  const pageMap={
+    dashboard:<Dashboard user={user} isMobile={isMobile}/>,
+    consulta:<PlaceholderPage icon="🔍" title="Consultar Imóvel" desc="Busca por CAR, GPS ou endereço com dados do SICAR, IBAMA e PRODES."/>,
+    mapa:<MapaPage/>,
+    ia:<PlaceholderPage icon="🤖" title="IA & Score" desc="Score 0-100 com análise automática de risco e chat inteligente."/>,
+    embargos:<PlaceholderPage icon="⛔" title="Embargos IBAMA" desc="Consulta de embargos ambientais ativos."/>,
+    prodes:<PlaceholderPage icon="📡" title="PRODES/INPE" desc="Alertas de desmatamento via PRODES e DETER."/>,
+    precipitacao:<PlaceholderPage icon="💧" title="Precipitação" desc="Histórico de chuvas dos últimos 30 dias."/>,
+    whatsapp:<PlaceholderPage icon="💬" title="WhatsApp Bot" desc="Consulte fazendas pelo WhatsApp enviando o CAR ou localização."/>,
+    planos:<PlanosPage isMobile={isMobile}/>,
+    admin:<AdminPage isMobile={isMobile}/>,
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{background:#0a0f0a;overflow-x:hidden;}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-track{background:#0a0f0a;}
+        ::-webkit-scrollbar-thumb{background:#1e3a1e;border-radius:3px;}
+        input::placeholder{color:#3d6b3d;}
+      `}</style>
+
+      {/* ═══════════════ SIDEBAR DESKTOP ═══════════════ */}
+      {!isMobile && (
+        <div style={{position:"fixed",top:0,left:0,width:230,height:"100vh",background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",zIndex:100}}>
+          <div style={{padding:"20px 16px",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🌿</div>
+              <div>
+                <div style={{fontSize:18,fontWeight:800,background:`linear-gradient(135deg,${C.accentBright},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AGROMIND</div>
+                <div style={{fontSize:9,color:C.textMuted,letterSpacing:"2px",textTransform:"uppercase"}}>Inteligência Rural</div>
+              </div>
+            </div>
+          </div>
+          <nav style={{flex:1,padding:"14px 10px",overflowY:"auto"}}>
+            {NAV.map(sec=>(
+              <div key={sec.section} style={{marginBottom:20}}>
+                <div style={{fontSize:9,color:C.textDim,letterSpacing:"1.5px",textTransform:"uppercase",padding:"0 8px",marginBottom:5}}>{sec.section}</div>
+                {sec.items.map(item=>(
+                  <div key={item.id} onClick={()=>setPage(item.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:2,background:page===item.id?`${C.green1}80`:"transparent",border:page===item.id?`1px solid ${C.border}`:"1px solid transparent",color:page===item.id?C.accentBright:C.textMuted,fontSize:13,fontWeight:page===item.id?600:400}}>
+                    <span style={{fontSize:15,width:18,textAlign:"center"}}>{item.icon}</span>{item.label}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </nav>
+          <div style={{padding:"12px 10px",borderTop:`1px solid ${C.border}`}}>
+            <div style={{background:`linear-gradient(135deg,${C.green1},${C.card})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:1}}>👤 {user.displayName||"Usuário"}</div>
+              <div style={{fontSize:10,color:C.textMuted,marginBottom:7,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
+              <button onClick={handleLogout} style={{width:"100%",padding:"6px 0",borderRadius:7,background:`${C.red}15`,border:`1px solid ${C.red}30`,color:C.red,fontSize:11,fontWeight:600,cursor:"pointer"}}>🚪 Sair</button>
+            </div>
+            <div style={{background:`linear-gradient(135deg,${C.green1},${C.green2})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"9px 12px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.accentBright}}>⭐ PRO ANUAL</div>
+              <div style={{fontSize:10,color:C.textMuted}}>Consultas ilimitadas</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ SIDEBAR MOBILE (DRAWER) ═══════════════ */}
+      {isMobile && sidebarOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:200}} onClick={()=>setSidebarOpen(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)"}}/>
+          <div
+            style={{position:"absolute",top:0,left:0,width:272,height:"100vh",background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",zIndex:201}}
+            onClick={e=>e.stopPropagation()}
+          >
+            {/* Header drawer */}
+            <div style={{padding:"16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:32,height:32,borderRadius:8,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🌿</div>
+                <div style={{fontSize:16,fontWeight:800,background:`linear-gradient(135deg,${C.accentBright},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AGROMIND</div>
+              </div>
+              <button onClick={()=>setSidebarOpen(false)} style={{background:`${C.border}`,border:"none",color:C.text,fontSize:16,cursor:"pointer",borderRadius:8,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            </div>
+
+            {/* User info no topo do drawer */}
+            <div style={{padding:"12px 14px",borderBottom:`1px solid ${C.border}`,background:`${C.green1}30`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:36,height:36,borderRadius:9,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,flexShrink:0}}>{initials}</div>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.displayName||"Usuário"}</div>
+                  <div style={{fontSize:10,color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Nav itens */}
+            <nav style={{flex:1,padding:"12px 10px",overflowY:"auto"}}>
+              {NAV.map(sec=>(
+                <div key={sec.section} style={{marginBottom:18}}>
+                  <div style={{fontSize:9,color:C.textDim,letterSpacing:"1.5px",textTransform:"uppercase",padding:"0 8px",marginBottom:5}}>{sec.section}</div>
+                  {sec.items.map(item=>(
+                    <div key={item.id} onClick={()=>{setPage(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:9,cursor:"pointer",marginBottom:2,background:page===item.id?`${C.green1}80`:"transparent",color:page===item.id?C.accentBright:C.textMuted,fontSize:14,fontWeight:page===item.id?700:400}}>
+                      <span style={{fontSize:18,width:22,textAlign:"center"}}>{item.icon}</span>{item.label}
+                      {page===item.id&&<div style={{marginLeft:"auto",width:5,height:5,borderRadius:"50%",background:C.accent}}/>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </nav>
+
+            {/* Footer drawer */}
+            <div style={{padding:"12px 14px",borderTop:`1px solid ${C.border}`}}>
+              <div style={{background:`linear-gradient(135deg,${C.green1},${C.green2})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"8px 12px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:C.accentBright}}>⭐ PRO ANUAL</div>
+                  <div style={{fontSize:10,color:C.textMuted}}>Consultas ilimitadas</div>
+                </div>
+              </div>
+              <button onClick={handleLogout} style={{width:"100%",padding:"10px 0",borderRadius:9,background:`${C.red}15`,border:`1px solid ${C.red}30`,color:C.red,fontSize:13,fontWeight:600,cursor:"pointer"}}>🚪 Sair da conta</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MAIN CONTENT ═══════════════ */}
+      <div style={{
+        marginLeft: isMobile ? 0 : 230,
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        // Espaço para bottom nav no mobile
+        paddingBottom: isMobile ? 65 : 0,
+      }}>
+
+        {/* TOPBAR */}
+        <div style={{
+          background:`${C.surface}f0`,
+          backdropFilter:"blur(12px)",
+          WebkitBackdropFilter:"blur(12px)",
+          borderBottom:`1px solid ${C.border}`,
+          padding:"0 14px",
+          height:54,
+          display:"flex",
+          alignItems:"center",
+          justifyContent:"space-between",
+          position:"sticky",
+          top:0,
+          zIndex:50,
+        }}>
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+            {isMobile && (
+              <button
+                onClick={()=>setSidebarOpen(true)}
+                style={{background:"transparent",border:`1px solid ${C.border}`,color:C.text,fontSize:18,cursor:"pointer",lineHeight:1,borderRadius:8,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
+              >
+                ☰
+              </button>
+            )}
+            {isMobile && (
+              <div style={{width:26,height:26,borderRadius:7,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>🌿</div>
+            )}
+            <div style={{fontSize:14,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentPage?.label||"Dashboard"}</div>
+          </div>
+
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            <div style={{width:32,height:32,borderRadius:7,background:C.card,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",fontSize:14}}>
+              🔔
+              <div style={{position:"absolute",top:5,right:5,width:6,height:6,borderRadius:"50%",background:C.accent,border:`1.5px solid ${C.surface}`}}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 10px 5px 5px",cursor:"pointer"}}>
+              <div style={{width:24,height:24,borderRadius:6,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>{initials}</div>
+              <span style={{fontSize:12,fontWeight:600,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.displayName?.split(" ")[0]||"Usuário"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* PAGE CONTENT */}
+        <div style={
+          page==="planos"||page==="admin"||page==="mapa"
+            ? {flex:1}
+            : {padding:isMobile?"12px":"24px 28px",flex:1}
+        }>
+          {pageMap[page]||pageMap.dashboard}
+        </div>
+      </div>
+
+      {/* ═══════════════ BOTTOM NAV MOBILE ═══════════════ */}
+      {isMobile && (
+        <div style={{
+          position:"fixed",
+          bottom:0,left:0,right:0,
+          background:C.surface,
+          borderTop:`1px solid ${C.border}`,
+          display:"flex",
+          zIndex:100,
+          paddingBottom:"env(safe-area-inset-bottom,0px)",
+          // Sombra para destacar do conteúdo
+          boxShadow:`0 -4px 20px rgba(0,0,0,0.4)`,
+        }}>
+          {BOTTOM_NAV_ITEMS.map(item=>(
+            <button
+              key={item.id}
+              onClick={()=>setPage(item.id)}
+              style={{
+                flex:1,
+                padding:"8px 4px 10px",
+                display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+                background:"transparent",border:"none",cursor:"pointer",
+                color:page===item.id?C.accentBright:C.textDim,
+                position:"relative",
+              }}
+            >
+              {/* Indicador ativo */}
+              {page===item.id&&(
+                <div style={{position:"absolute",top:0,left:"20%",right:"20%",height:2,borderRadius:"0 0 3px 3px",background:C.accent}}/>
+              )}
+              <span style={{fontSize:20,lineHeight:1}}>{item.icon}</span>
+              <span style={{fontSize:9,fontWeight:page===item.id?700:400,letterSpacing:0.2}}>{item.label}</span>
+            </button>
+          ))}
+          {/* Botão "Mais" abre o drawer */}
+          <button
+            onClick={()=>setSidebarOpen(true)}
+            style={{
+              flex:1,
+              padding:"8px 4px 10px",
+              display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+              background:"transparent",border:"none",cursor:"pointer",
+              color:C.textDim,
+            }}
+          >
+            <span style={{fontSize:20,lineHeight:1}}>☰</span>
+            <span style={{fontSize:9,fontWeight:400}}>Mais</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
