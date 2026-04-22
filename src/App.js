@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { auth } from "./firebase";
+import { useState, useEffect, useCallback } from "react";
+import { auth, db } from "./firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -7,9 +7,118 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from "firebase/auth";
+import { doc, onSnapshot, getDoc, setDoc, updateDoc, increment, serverTimestamp, collection, addDoc } from "firebase/firestore";
 import MapaPage from "./mapapage";
-import { useCredits } from "./hooks/useCredits";
-import SemCreditosModal from "./components/SemCreditosModal";
+
+// ── Sistema de Créditos ──────────────────────────────────────
+const PLANOS = {
+  starter_mensal:  { nome:"Starter Mensal",  creditos:20,  preco:49,  periodo:"mensal" },
+  pro_mensal:      { nome:"Pro Mensal",       creditos:100, preco:99,  periodo:"mensal" },
+  starter_anual:   { nome:"Starter Anual",    creditos:20,  preco:39,  periodo:"anual"  },
+  pro_anual:       { nome:"Pro Anual",        creditos:100, preco:79,  periodo:"anual"  },
+};
+
+async function criarUsuarioFirestore(uid, email, nome) {
+  const ref = doc(db, "usuarios", uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) return snap.data();
+  const dados = { uid, email, nome, plano:"gratuito", creditos:3, creditosUsados:0, totalConsultas:0, criadoEm:serverTimestamp() };
+  await setDoc(ref, dados);
+  return dados;
+}
+
+async function descontarCredito(uid, descricao="Consulta de imóvel") {
+  const ref = doc(db, "usuarios", uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists() || snap.data().creditos <= 0) return { sucesso:false, motivo:"sem_creditos" };
+  const dados = snap.data();
+  await updateDoc(ref, { creditos:increment(-1), creditosUsados:increment(1), totalConsultas:increment(1), ultimaConsulta:serverTimestamp() });
+  await addDoc(collection(db,"usuarios",uid,"consultas"), { descricao, creditosAntes:dados.creditos, creditosDepois:dados.creditos-1, criadoEm:serverTimestamp() });
+  return { sucesso:true, creditos:dados.creditos-1 };
+}
+
+async function adicionarCreditosExtras(uid, quantidade, planoAtual) {
+  const ref = doc(db, "usuarios", uid);
+  await updateDoc(ref, { creditos:increment(quantidade) });
+  await addDoc(collection(db,"usuarios",uid,"pagamentos"), { tipo:"creditos_extras", quantidade, valorTotal:quantidade*(planoAtual?.includes("anual")?1.50:2.00), criadoEm:serverTimestamp(), status:"aprovado" });
+  return { sucesso:true };
+}
+
+function useCredits(user) {
+  const [creditos, setCreditos] = useState(0);
+  const [plano, setPlano] = useState("gratuito");
+  const [loading, setLoading] = useState(true);
+  const [semCreditos, setSemCreditos] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    criarUsuarioFirestore(user.uid, user.email, user.displayName||"Usuário");
+    const ref = doc(db, "usuarios", user.uid);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setCreditos(d.creditos||0);
+        setPlano(d.plano||"gratuito");
+        setSemCreditos((d.creditos||0)<=0);
+      }
+      setLoading(false);
+    });
+    return unsub;
+  }, [user]);
+
+  const usarCredito = useCallback(async (descricao) => {
+    if (!user) return { sucesso:false };
+    if (creditos<=0) { setSemCreditos(true); return { sucesso:false, motivo:"sem_creditos" }; }
+    return await descontarCredito(user.uid, descricao);
+  }, [user, creditos]);
+
+  const corCreditos = creditos>10?"#22c55e":creditos>3?"#fbbf24":"#ef4444";
+  return { creditos, plano, loading, semCreditos, corCreditos, usarCredito };
+}
+
+// ── Modal Sem Créditos ───────────────────────────────────────
+function SemCreditosModal({ user, plano, onClose, onUpgrade }) {
+  const [comprando, setComprando] = useState(false);
+  const [qtd, setQtd] = useState(10);
+  const isAnual = plano?.includes("anual");
+  const precoUnit = isAnual ? 1.50 : 2.00;
+
+  const comprarExtras = async () => {
+    setComprando(true);
+    await adicionarCreditosExtras(user.uid, qtd, plano);
+    setComprando(false);
+    onClose();
+    alert(`✅ ${qtd} créditos adicionados!`);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}>
+      <div style={{background:"#111d11",border:"1px solid #1e3a1e",borderRadius:20,padding:"32px 28px",maxWidth:400,width:"100%"}}>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:48,marginBottom:8}}>⚡</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#e8f5e9",marginBottom:6}}>Seus créditos acabaram!</div>
+          <div style={{fontSize:13,color:"#6b9e6b"}}>Escolha uma opção para continuar.</div>
+        </div>
+        <div style={{background:"#12803f15",border:"1px solid #12803f40",borderRadius:12,padding:"16px",marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#4ade80",marginBottom:10}}>⚡ Comprar créditos extras</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <button onClick={()=>setQtd(q=>Math.max(5,q-5))} style={{width:32,height:32,borderRadius:8,border:"1px solid #1e3a1e",background:"#0a0f0a",color:"#e8f5e9",cursor:"pointer",fontSize:16}}>−</button>
+            <div style={{flex:1,textAlign:"center"}}>
+              <div style={{fontSize:22,fontWeight:900,color:"#22c55e"}}>{qtd}</div>
+              <div style={{fontSize:10,color:"#6b9e6b"}}>créditos · R$ {(qtd*precoUnit).toFixed(2)}</div>
+            </div>
+            <button onClick={()=>setQtd(q=>q+5)} style={{width:32,height:32,borderRadius:8,border:"1px solid #1e3a1e",background:"#0a0f0a",color:"#e8f5e9",cursor:"pointer",fontSize:16}}>+</button>
+          </div>
+          <button onClick={comprarExtras} disabled={comprando} style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#12803f,#16a34a)",color:"#e8f5e9",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+            {comprando?"⏳ Processando...":"💳 Comprar agora"}
+          </button>
+        </div>
+        <button onClick={onUpgrade} style={{width:"100%",padding:"10px",borderRadius:10,border:"1px solid #fbbf2440",background:"#fbbf2410",color:"#fbbf24",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:8}}>🚀 Ver planos →</button>
+        <button onClick={onClose} style={{width:"100%",padding:"10px",borderRadius:10,border:"1px solid #1e3a1e",background:"transparent",color:"#6b9e6b",fontSize:13,cursor:"pointer"}}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
 
 const C = {
   bg:"#0a0f0a",surface:"#0f1a0f",card:"#111d11",
@@ -325,6 +434,10 @@ function SidebarContent({user,page,setPage,onClose,handleLogout}){
           <div style={{fontSize:12,fontWeight:700,color:C.accentBright}}>⭐ PRO ANUAL</div>
           <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>Consultas ilimitadas · Ativo</div>
         </div>
+        <div style={{background:`${C.green1}30`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"10px 14px",marginTop:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:12,color:C.textMuted}}>⚡ Créditos</span>
+          <span style={{fontSize:14,fontWeight:800,color:"#22c55e"}}>{creditos||0}</span>
+        </div>
       </div>
     </>
   );
@@ -335,10 +448,11 @@ export default function App(){
   const[loading,setLoading]=useState(true);
   const[page,setPage]=useState("dashboard");
   const[drawerOpen,setDrawerOpen]=useState(false);
-  const { creditos, corCreditos, semCreditos, usarCredito, plano } = useCredits(user);
-const [showSemCreditos, setShowSemCreditos] = useState(false);
+  const[showSemCreditos,setShowSemCreditos]=useState(false);
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setLoading(false);});return unsub;},[]);
+
+  const { creditos, corCreditos, plano } = useCredits(user||{uid:null});
 
   if(loading)return(<div style={{...S.authPage,flexDirection:"column",gap:16}}><div style={{fontSize:48}}>🌿</div><div style={{fontSize:18,fontWeight:700,color:C.accentBright}}>Carregando AGROMIND...</div></div>);
   if(!user)return <AuthScreen/>;
@@ -488,13 +602,16 @@ const [showSemCreditos, setShowSemCreditos] = useState(false);
           </div>
         ))}
       </nav>
+
+      {/* Modal sem créditos */}
+      {showSemCreditos && (
+        <SemCreditosModal
+          user={user}
+          plano={plano}
+          onClose={()=>setShowSemCreditos(false)}
+          onUpgrade={()=>{setShowSemCreditos(false);setPage("planos");}}
+        />
+      )}
     </div>
-  {showSemCreditos && (
-  <SemCreditosModal
-    user={user}
-    plano={plano}
-    onClose={() => setShowSemCreditos(false)}
-    onUpgrade={() => { setShowSemCreditos(false); setPage("planos"); }}
-  />
-)}
+  );
 }
