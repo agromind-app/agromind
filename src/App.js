@@ -8,6 +8,8 @@ import {
   updateProfile,
 } from "firebase/auth";
 import MapaPage from "./mapapage";
+import { useCredits } from "./hooks/useCredits";
+import SemCreditosModal from "./components/SemCreditosModal";
 
 const C = {
   bg:"#0a0f0a",surface:"#0f1a0f",card:"#111d11",
@@ -333,6 +335,8 @@ export default function App(){
   const[loading,setLoading]=useState(true);
   const[page,setPage]=useState("dashboard");
   const[drawerOpen,setDrawerOpen]=useState(false);
+  const { creditos, corCreditos, semCreditos, usarCredito, plano } = useCredits(user);
+const [showSemCreditos, setShowSemCreditos] = useState(false);
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setLoading(false);});return unsub;},[]);
 
@@ -485,5 +489,12 @@ export default function App(){
         ))}
       </nav>
     </div>
-  );
+  {showSemCreditos && (
+  <SemCreditosModal
+    user={user}
+    plano={plano}
+    onClose={() => setShowSemCreditos(false)}
+    onUpgrade={() => { setShowSemCreditos(false); setPage("planos"); }}
+  />
+)}
 }
