@@ -29,39 +29,29 @@ const S = {
   btn:{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:`linear-gradient(135deg, ${C.green2}, ${C.green3})`,color:C.text,fontWeight:700,fontSize:15,cursor:"pointer",marginTop:8,boxShadow:`0 4px 20px ${C.green2}50`},
   errorBox:{background:`${C.red}15`,border:`1px solid ${C.red}40`,borderRadius:8,padding:"10px 14px",fontSize:13,color:C.red,marginBottom:16},
   successBox:{background:`${C.accent}15`,border:`1px solid ${C.accent}40`,borderRadius:8,padding:"10px 14px",fontSize:13,color:C.accentBright,marginBottom:16},
-  sidebar:{position:"fixed",top:0,left:0,width:240,height:"100vh",background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",zIndex:100},
-  nav:{flex:1,padding:"16px 12px",overflowY:"auto"},
-  navSection:{marginBottom:24},
-  navSectionTitle:{fontSize:10,color:C.textDim,letterSpacing:"1.5px",textTransform:"uppercase",padding:"0 8px",marginBottom:6},
-  navItem:(a)=>({display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,cursor:"pointer",marginBottom:2,background:a?`${C.green1}80`:"transparent",border:a?`1px solid ${C.border}`:"1px solid transparent",color:a?C.accentBright:C.textMuted,fontSize:13.5,fontWeight:a?600:400}),
-  main:{marginLeft:240,minHeight:"100vh",display:"flex",flexDirection:"column"},
-  topbar:{background:`${C.surface}ee`,backdropFilter:"blur(12px)",borderBottom:`1px solid ${C.border}`,padding:"0 32px",height:64,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50},
-  content:{padding:"28px 32px",flex:1},
-  statsRow:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24},
-  statCard:{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"18px 20px",display:"flex",alignItems:"center",gap:14},
-  statIcon:(c)=>({width:44,height:44,borderRadius:12,background:`${c}20`,border:`1px solid ${c}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}),
-  card:{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"22px 24px"},
-  grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:18},
-  grid3:{display:"grid",gridTemplateColumns:"2fr 1fr",gap:18,marginBottom:18},
   chip:(c)=>({display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:20,background:`${c}20`,color:c,border:`1px solid ${c}30`}),
-  searchHero:{background:`linear-gradient(135deg, ${C.card} 0%, ${C.green1}40 50%, ${C.card} 100%)`,border:`1px solid ${C.border}`,borderRadius:20,padding:"32px 36px",marginBottom:28,position:"relative",overflow:"hidden"},
-  searchBar:{display:"flex",gap:10},
-  toggleBtn:(a)=>({padding:"7px 14px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:a?600:400,background:a?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:a?C.text:C.textMuted,border:"none"}),
-  searchInput:{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 18px",color:C.text,fontSize:14,outline:"none",height:44},
-  searchBtn:{background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:14,padding:"0 24px",cursor:"pointer",height:44,display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap",boxShadow:`0 4px 14px ${C.green2}50`,flexShrink:0},
+  card:{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px"},
   chartBar:(p,c)=>({height:"100%",width:`${p}%`,background:`linear-gradient(90deg,${c}80,${c})`,borderRadius:3}),
   scoreRing:{width:110,height:110,borderRadius:"50%",background:`conic-gradient(${C.accent} 0deg, ${C.accent} ${0.78*360}deg, ${C.border} ${0.78*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px"},
   scoreInner:{width:82,height:82,borderRadius:"50%",background:C.card,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"},
   precipBar:{display:"flex",alignItems:"flex-end",gap:3,height:70,marginBottom:6},
   precipCol:(h)=>({flex:1,height:`${h}%`,background:`linear-gradient(180deg,${C.blue}90,${C.blue}40)`,borderRadius:"3px 3px 0 0",minHeight:3}),
-  tableTh:{padding:"12px 18px",fontSize:11,fontWeight:700,color:C.textMuted,letterSpacing:"0.5px",textTransform:"uppercase",textAlign:"left"},
-  tableTd:{padding:"13px 18px",fontSize:13,borderBottom:`1px solid ${C.border}`,color:C.text},
+  tableTh:{padding:"10px 10px",fontSize:10,fontWeight:700,color:C.textMuted,letterSpacing:"0.5px",textTransform:"uppercase",textAlign:"left"},
+  tableTd:{padding:"10px 10px",fontSize:12,borderBottom:`1px solid ${C.border}`,color:C.text},
 };
 
 const NAV=[
   {section:"Principal",items:[{icon:"⊞",label:"Dashboard",id:"dashboard"},{icon:"🔍",label:"Consultar Imóvel",id:"consulta"},{icon:"🗺️",label:"Mapa Interativo",id:"mapa"},{icon:"🤖",label:"IA & Score",id:"ia"}]},
   {section:"Ambiental",items:[{icon:"🌿",label:"Embargos IBAMA",id:"embargos"},{icon:"📡",label:"PRODES/INPE",id:"prodes"},{icon:"💧",label:"Precipitação",id:"precipitacao"}]},
   {section:"Sistema",items:[{icon:"💬",label:"WhatsApp Bot",id:"whatsapp"},{icon:"💳",label:"Planos & Preços",id:"planos"},{icon:"🛡️",label:"Painel Admin",id:"admin"}]},
+];
+
+const BOTTOM_NAV = [
+  {icon:"⊞",label:"Início",id:"dashboard"},
+  {icon:"🗺️",label:"Mapa",id:"mapa"},
+  {icon:"🔍",label:"Buscar",id:"consulta"},
+  {icon:"💳",label:"Planos",id:"planos"},
+  {icon:"🛡️",label:"Admin",id:"admin"},
 ];
 
 const precipData=[45,70,30,90,55,20,80,65,40,75,50,35,60,88,42,30,55,70,45,60,30,85,65,50,40,75,60,50,45,70];
@@ -76,14 +66,14 @@ function SearchBar(){
   const[type,setType]=useState("car");
   const[val,setVal]=useState("");
   return(
-    <div style={S.searchBar}>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
       <div style={{display:"flex",background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:3,gap:2,flexShrink:0}}>
-        {[["car","CAR"],["gps","GPS"],["end","Endereço"]].map(([k,l])=>(
-          <button key={k} style={S.toggleBtn(type===k)} onClick={()=>setType(k)}>{l}</button>
+        {[["car","CAR"],["gps","GPS"],["end","End"]].map(([k,l])=>(
+          <button key={k} style={{padding:"6px 12px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:type===k?600:400,background:type===k?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:type===k?C.text:C.textMuted,border:"none"}} onClick={()=>setType(k)}>{l}</button>
         ))}
       </div>
-      <input style={S.searchInput} placeholder={type==="car"?"Ex: MT-5107040-9B4D7A3E2F1C6B8A0D5E9F3C":type==="gps"?"Ex: -11.8456, -55.1987":"Ex: Fazenda Horizonte Verde, Sinop, MT"} value={val} onChange={e=>setVal(e.target.value)}/>
-      <button style={S.searchBtn}>🔍 Consultar</button>
+      <input style={{flex:1,minWidth:100,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 14px",color:C.text,fontSize:13,outline:"none",height:42}} placeholder={type==="car"?"Ex: MT-5107040-9B4D7A...":type==="gps"?"Ex: -11.8456, -55.1987":"Ex: Fazenda Horizonte Verde"} value={val} onChange={e=>setVal(e.target.value)}/>
+      <button style={{background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 20px",cursor:"pointer",height:42,whiteSpace:"nowrap",boxShadow:`0 4px 14px ${C.green2}50`,flexShrink:0}}>🔍 Consultar</button>
     </div>
   );
 }
@@ -91,84 +81,80 @@ function SearchBar(){
 function Dashboard({user}){
   return(
     <div>
-      <div style={S.searchHero}>
-        <div style={{position:"absolute",top:0,right:0,width:300,height:"100%",background:`radial-gradient(ellipse at top right,${C.green2}20,transparent 70%)`,pointerEvents:"none"}}/>
-        <div style={{fontSize:26,fontWeight:800,marginBottom:6,position:"relative"}}>
-          🌿 Bem-vindo, {user?.displayName?.split(" ")[0]||"Usuário"}!
-        </div>
-        <div style={{color:C.textMuted,fontSize:14,marginBottom:24,position:"relative"}}>CAR · INCRA · SIGEF · IBAMA · PRODES · Score IA — tudo em uma plataforma</div>
+      <div style={{...S.card,background:`linear-gradient(135deg, ${C.card} 0%, ${C.green1}40 50%, ${C.card} 100%)`,borderRadius:20,padding:"24px 20px",marginBottom:20,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,right:0,width:200,height:"100%",background:`radial-gradient(ellipse at top right,${C.green2}20,transparent 70%)`,pointerEvents:"none"}}/>
+        <div style={{fontSize:"clamp(17px,4vw,24px)",fontWeight:800,marginBottom:6}}>🌿 Bem-vindo, {user?.displayName?.split(" ")[0]||"Usuário"}!</div>
+        <div style={{color:C.textMuted,fontSize:13,marginBottom:20}}>CAR · INCRA · SIGEF · IBAMA · PRODES · Score IA</div>
         <SearchBar/>
       </div>
-      <div style={S.statsRow}>
-        {[{icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},{icon:"🌾",val:"34.291",label:"Imóveis Cadastrados",color:C.yellow},{icon:"🚨",val:"128",label:"Alertas Ativos",color:C.red},{icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue}].map((s,i)=>(
-          <div key={i} style={S.statCard}>
-            <div style={S.statIcon(s.color)}>{s.icon}</div>
-            <div>
-              <div style={{fontSize:22,fontWeight:800,color:s.color}}>{s.val}</div>
-              <div style={{fontSize:12,color:C.textMuted,marginTop:1}}>{s.label}</div>
-            </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>
+        {[{icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},{icon:"🌾",val:"34.291",label:"Imóveis",color:C.yellow},{icon:"🚨",val:"128",label:"Alertas",color:C.red},{icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue}].map((s,i)=>(
+          <div key={i} style={{...S.card,display:"flex",alignItems:"center",gap:10,padding:"14px"}}>
+            <div style={{width:38,height:38,borderRadius:10,background:`${s.color}20`,border:`1px solid ${s.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+            <div><div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div><div style={{fontSize:10,color:C.textMuted,marginTop:1}}>{s.label}</div></div>
           </div>
         ))}
       </div>
-      <div style={S.grid3}>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginBottom:14}}>
         <div style={S.card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <span style={{fontSize:15,fontWeight:700}}>📋 Consultas Recentes</span>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <span style={{fontSize:14,fontWeight:700}}>📋 Consultas Recentes</span>
             <span style={S.chip(C.accent)}>Hoje</span>
           </div>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>{["Fazenda","Data","Status"].map(h=><th key={h} style={{...S.tableTh,padding:"6px 0",background:"transparent"}}>{h}</th>)}</tr></thead>
-            <tbody>{recentConsultas.map((r,i)=>(
-              <tr key={i}>
-                <td style={{...S.tableTd,padding:"10px 0"}}>
-                  <div style={{fontSize:13,fontWeight:600}}>{r.fazenda}</div>
-                  <div style={{fontSize:11,color:C.textMuted}}>{r.car}</div>
-                </td>
-                <td style={{...S.tableTd,padding:"10px 0",fontSize:12,color:C.textMuted}}>{r.data}</td>
-                <td style={{...S.tableTd,padding:"10px 0"}}>
-                  <span style={S.chip(r.status==="ok"?C.accent:r.status==="alerta"?C.yellow:C.red)}>{r.status==="ok"?"✓ OK":r.status==="alerta"?"⚠ Alerta":"⛔ Embargo"}</span>
-                </td>
-              </tr>
-            ))}</tbody>
-          </table>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:260}}>
+              <thead><tr>{["Fazenda","Data","Status"].map(h=><th key={h} style={S.tableTh}>{h}</th>)}</tr></thead>
+              <tbody>{recentConsultas.map((r,i)=>(
+                <tr key={i}>
+                  <td style={S.tableTd}><div style={{fontWeight:600}}>{r.fazenda}</div><div style={{fontSize:10,color:C.textMuted}}>{r.car}</div></td>
+                  <td style={{...S.tableTd,color:C.textMuted}}>{r.data}</td>
+                  <td style={S.tableTd}><span style={S.chip(r.status==="ok"?C.accent:r.status==="alerta"?C.yellow:C.red)}>{r.status==="ok"?"✓ OK":r.status==="alerta"?"⚠ Alerta":"⛔"}</span></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:18}}>
+
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={S.card}>
-            <div style={{fontSize:15,fontWeight:700,marginBottom:14,textAlign:"center"}}>🤖 Score IA Médio</div>
+            <div style={{fontSize:14,fontWeight:700,marginBottom:12,textAlign:"center"}}>🤖 Score IA Médio</div>
             <div style={S.scoreRing}><div style={S.scoreInner}><div style={{fontSize:24,fontWeight:900,color:C.accentBright,lineHeight:1}}>78</div><div style={{fontSize:11,color:C.textMuted}}>/ 100</div></div></div>
-            <div style={{textAlign:"center",fontSize:11,color:C.textMuted}}>Baseado em 1.847 consultas hoje</div>
+            <div style={{textAlign:"center",fontSize:11,color:C.textMuted}}>1.847 consultas hoje</div>
           </div>
           <div style={S.card}>
-            <div style={{fontSize:15,fontWeight:700,marginBottom:12}}>📡 Alertas Recentes</div>
+            <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>📡 Alertas Recentes</div>
             {[{msg:"Embargo IBAMA ativo",sub:"Faz. Santa Rosa · MS",color:C.red,icon:"⛔"},{msg:"Desmatamento detectado",sub:"Sítio Bela Vista · PA",color:C.orange,icon:"🛸"},{msg:"Moratória do Cerrado",sub:"Faz. Chapada · BA",color:C.yellow,icon:"🌱"}].map((a,i)=>(
-              <div key={i} style={{display:"flex",gap:10,padding:"10px 12px",borderRadius:8,marginBottom:8,border:`1px solid ${a.color}40`,background:`${a.color}08`}}>
-                <span style={{fontSize:16}}>{a.icon}</span>
-                <div><div style={{fontSize:13,fontWeight:600,color:a.color}}>{a.msg}</div><div style={{fontSize:11,opacity:0.7}}>{a.sub}</div></div>
+              <div key={i} style={{display:"flex",gap:8,padding:"8px 10px",borderRadius:8,marginBottom:6,border:`1px solid ${a.color}40`,background:`${a.color}08`}}>
+                <span>{a.icon}</span>
+                <div><div style={{fontSize:12,fontWeight:600,color:a.color}}>{a.msg}</div><div style={{fontSize:11,opacity:0.7}}>{a.sub}</div></div>
               </div>
             ))}
           </div>
         </div>
       </div>
-      <div style={S.grid2}>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
         <div style={S.card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <span style={{fontSize:15,fontWeight:700}}>🌧️ Precipitação — 30 dias</span>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <span style={{fontSize:13,fontWeight:700}}>🌧️ Precipitação — 30 dias</span>
             <span style={S.chip(C.blue)}>Sinop/MT</span>
           </div>
           <div style={S.precipBar}>{precipData.map((v,i)=><div key={i} style={S.precipCol(v)}/>)}</div>
           <div style={{display:"flex",justifyContent:"space-between"}}>{["01","05","10","15","20","25","30"].map(d=><span key={d} style={{fontSize:10,color:C.textDim}}>{d}</span>)}</div>
         </div>
         <div style={S.card}>
-          <div style={{fontSize:15,fontWeight:700,marginBottom:16}}>🌿 Composição do Solo</div>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:14}}>🌿 Composição do Solo</div>
           {[["Argila",52,C.orange],["Areia",30,C.yellow],["Silte",18,C.accent]].map(([l,p,c])=>(
-            <div key={l} style={{marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:5}}>
+            <div key={l} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:C.textMuted}}>{l}</span><span style={{fontWeight:700,color:c}}>{p}%</span>
               </div>
               <div style={{height:6,background:C.bg,borderRadius:3,overflow:"hidden"}}><div style={S.chartBar(p,c)}/></div>
             </div>
           ))}
-          <div style={{marginTop:12,padding:"10px 14px",background:`${C.bg}80`,borderRadius:8,border:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",fontSize:12}}>
+          <div style={{marginTop:10,padding:"8px 12px",background:`${C.bg}80`,borderRadius:8,border:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",fontSize:12}}>
             <span style={{color:C.textMuted}}>pH do solo</span><span style={{fontWeight:700,color:C.accentBright}}>6.2 — Ideal</span>
           </div>
         </div>
@@ -179,30 +165,31 @@ function Dashboard({user}){
 
 function PlanosPage(){
   return(
-    <div style={{padding:"28px 32px"}}>
-      <div style={{textAlign:"center",marginBottom:40}}>
-        <div style={{fontSize:32,fontWeight:900,letterSpacing:"-1px",marginBottom:8}}>Planos AGROMIND</div>
-        <div style={{color:C.textMuted,fontSize:15}}>Mais completo que o Dados Fazenda · Cancele quando quiser</div>
+    <div style={{padding:"20px 16px"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontSize:"clamp(20px,5vw,30px)",fontWeight:900,letterSpacing:"-1px",marginBottom:8}}>Planos AGROMIND</div>
+        <div style={{color:C.textMuted,fontSize:13}}>Mais completo que o Dados Fazenda · Cancele quando quiser</div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:20,maxWidth:900,margin:"0 auto"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,maxWidth:880,margin:"0 auto"}}>
         {[
-          {title:"Starter",price:"49",per:"/mês",featured:false,features:["50 consultas/mês","Dados CAR completo","Score IA básico","Mapa interativo","Suporte por e-mail"]},
-          {title:"Pro Mensal",price:"99",per:"/mês",featured:true,badge:"🔥 MAIS VENDIDO",features:["Consultas ilimitadas","INCRA, IBAMA, PRODES","Score IA avançado","Laudo PDF automático","Chat IA com a fazenda","WhatsApp Bot","Exportar KML","API access"]},
-          {title:"Pro Anual",price:"79",per:"/mês · cobrado anualmente",featured:false,badge:"💰 ECONOMIA DE 20%",features:["Tudo do Pro Mensal","Painel multi-usuários","Relatórios avançados","Alertas automáticos","Suporte prioritário","Onboarding personalizado"]},
+          {title:"Starter",price:"49",per:"/mês",sub:"20 consultas inclusas",featured:false,features:["20 consultas/mês","Dados CAR completo","Score IA básico","Mapa interativo","Suporte por e-mail"]},
+          {title:"Pro Mensal",price:"99",per:"/mês",sub:"100 consultas inclusas",featured:true,badge:"🔥 MAIS VENDIDO",features:["100 consultas/mês","INCRA, IBAMA, PRODES","Score IA avançado","Laudo PDF automático","Chat IA com a fazenda","WhatsApp Bot","Exportar KML"]},
+          {title:"Pro Anual",price:"79",per:"/mês · cobrado anualmente",sub:"100 consultas inclusas",featured:false,badge:"💰 ECONOMIA 20%",features:["100 consultas/mês","Tudo do Pro Mensal","Relatórios avançados","Alertas automáticos","Suporte prioritário"]},
         ].map((p,i)=>(
-          <div key={i} style={{background:p.featured?`linear-gradient(160deg,${C.green1},${C.card})`:C.card,border:`1px solid ${p.featured?C.borderLight:C.border}`,borderRadius:20,padding:"28px 24px",position:"relative",boxShadow:p.featured?`0 0 40px ${C.green2}30`:"none"}}>
-            {p.badge&&<div style={{position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:`linear-gradient(135deg,${C.accent},${C.green2})`,color:C.bg,fontSize:11,fontWeight:800,padding:"4px 14px",borderRadius:20,whiteSpace:"nowrap"}}>{p.badge}</div>}
-            <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>{p.title}</div>
-            <div style={{fontSize:38,fontWeight:900,letterSpacing:"-1px",color:C.accentBright,lineHeight:1.1}}>R${p.price}</div>
-            <div style={{fontSize:13,color:C.textMuted,marginBottom:20}}>{p.per}</div>
-            {p.features.map(f=><div key={f} style={{display:"flex",gap:8,fontSize:13,marginBottom:8,color:C.textMuted}}><span style={{color:C.accent}}>✓</span>{f}</div>)}
-            <button style={{width:"100%",padding:"12px 0",borderRadius:10,border:p.featured?"none":`1px solid ${C.borderLight}`,background:p.featured?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:p.featured?C.text:C.accentBright,fontWeight:700,fontSize:14,cursor:"pointer",marginTop:20}}>
+          <div key={i} style={{background:p.featured?`linear-gradient(160deg,${C.green1},${C.card})`:C.card,border:`1px solid ${p.featured?C.borderLight:C.border}`,borderRadius:18,padding:"24px 18px",position:"relative",boxShadow:p.featured?`0 0 40px ${C.green2}30`:"none"}}>
+            {p.badge&&<div style={{position:"absolute",top:-11,left:"50%",transform:"translateX(-50%)",background:`linear-gradient(135deg,${C.accent},${C.green2})`,color:C.bg,fontSize:10,fontWeight:800,padding:"3px 12px",borderRadius:20,whiteSpace:"nowrap"}}>{p.badge}</div>}
+            <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>{p.title}</div>
+            <div style={{fontSize:34,fontWeight:900,letterSpacing:"-1px",color:C.accentBright,lineHeight:1.1}}>R${p.price}</div>
+            <div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>{p.per}</div>
+            <div style={{fontSize:11,color:C.accent,fontWeight:600,marginBottom:16}}>✓ {p.sub} · Extras R$2,00</div>
+            {p.features.map(f=><div key={f} style={{display:"flex",gap:8,fontSize:12,marginBottom:7,color:C.textMuted}}><span style={{color:C.accent}}>✓</span>{f}</div>)}
+            <button style={{width:"100%",padding:"11px 0",borderRadius:10,border:p.featured?"none":`1px solid ${C.borderLight}`,background:p.featured?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:p.featured?C.text:C.accentBright,fontWeight:700,fontSize:13,cursor:"pointer",marginTop:18}}>
               {p.featured?"Assinar Agora":"Começar"}
             </button>
           </div>
         ))}
       </div>
-      <div style={{textAlign:"center",marginTop:32,fontSize:13,color:C.textMuted}}>💳 PIX · Cartão de Crédito · Boleto Bancário · 🔒 Pagamento 100% seguro</div>
+      <div style={{textAlign:"center",marginTop:24,fontSize:12,color:C.textMuted}}>💳 PIX · Cartão · Boleto · 🔒 Pagamento 100% seguro via Mercado Pago</div>
     </div>
   );
 }
@@ -210,23 +197,25 @@ function PlanosPage(){
 function AdminPage(){
   const users=[{nome:"Carlos Mendes",email:"carlos@email.com",plano:"Anual Pro",consultas:87,status:"ativo"},{nome:"Ana Rodrigues",email:"ana@email.com",plano:"Mensal",consultas:23,status:"ativo"},{nome:"Faz. Pioneira",email:"contato@fazpioneira.com.br",plano:"Anual Pro",consultas:145,status:"ativo"},{nome:"João Pereira",email:"joao@email.com",plano:"Mensal",consultas:8,status:"inativo"}];
   return(
-    <div style={{padding:"28px 32px"}}>
-      <div style={{marginBottom:24}}><div style={{fontSize:22,fontWeight:800,marginBottom:4}}>🛡️ Painel Administrativo</div><div style={{fontSize:13,color:C.textMuted}}>Visão exclusiva do dono</div></div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginBottom:24}}>
+    <div style={{padding:"20px 14px"}}>
+      <div style={{marginBottom:18}}><div style={{fontSize:20,fontWeight:800,marginBottom:4}}>🛡️ Painel Administrativo</div><div style={{fontSize:12,color:C.textMuted}}>Visão exclusiva do dono</div></div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:18}}>
         {[{label:"Usuários Ativos",val:"1.247",icon:"👥",color:C.accent},{label:"Receita Mensal",val:"R$ 87.430",icon:"💰",color:C.yellow},{label:"Consultas Hoje",val:"4.821",icon:"🔍",color:C.blue},{label:"Churn Mensal",val:"2,1%",icon:"📉",color:C.orange},{label:"Ticket Médio",val:"R$ 94,60",icon:"💳",color:C.accentBright},{label:"NPS",val:"72",icon:"⭐",color:C.yellow}].map((a,i)=>(
-          <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px",borderLeft:`3px solid ${a.color}`}}>
-            <div style={{fontSize:22,marginBottom:6}}>{a.icon}</div>
-            <div style={{fontSize:24,fontWeight:900,color:a.color}}>{a.val}</div>
-            <div style={{fontSize:12,color:C.textMuted,marginTop:2}}>{a.label}</div>
+          <div key={i} style={{...S.card,borderLeft:`3px solid ${a.color}`,padding:"14px"}}>
+            <div style={{fontSize:18,marginBottom:4}}>{a.icon}</div>
+            <div style={{fontSize:18,fontWeight:900,color:a.color}}>{a.val}</div>
+            <div style={{fontSize:10,color:C.textMuted,marginTop:2}}>{a.label}</div>
           </div>
         ))}
       </div>
-      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,overflow:"hidden"}}>
-        <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,fontSize:15,fontWeight:700}}>👤 Usuários Recentes</div>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr style={{background:`${C.green1}50`}}>{["Nome","Email","Plano","Consultas","Status"].map(h=><th key={h} style={S.tableTh}>{h}</th>)}</tr></thead>
-          <tbody>{users.map((u,i)=><tr key={i}><td style={S.tableTd}>{u.nome}</td><td style={{...S.tableTd,color:C.textMuted}}>{u.email}</td><td style={S.tableTd}><span style={S.chip(C.blue)}>{u.plano}</span></td><td style={S.tableTd}>{u.consultas}</td><td style={S.tableTd}><span style={S.chip(u.status==="ativo"?C.accent:C.textDim)}>{u.status}</span></td></tr>)}</tbody>
-        </table>
+      <div style={{...S.card,padding:0,overflow:"hidden"}}>
+        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,fontSize:14,fontWeight:700}}>👤 Usuários Recentes</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:360}}>
+            <thead><tr style={{background:`${C.green1}50`}}>{["Nome","Plano","Consultas","Status"].map(h=><th key={h} style={S.tableTh}>{h}</th>)}</tr></thead>
+            <tbody>{users.map((u,i)=><tr key={i}><td style={S.tableTd}><div style={{fontWeight:600}}>{u.nome}</div><div style={{fontSize:10,color:C.textMuted}}>{u.email}</div></td><td style={S.tableTd}><span style={S.chip(C.blue)}>{u.plano}</span></td><td style={S.tableTd}>{u.consultas}</td><td style={S.tableTd}><span style={S.chip(u.status==="ativo"?C.accent:C.textDim)}>{u.status}</span></td></tr>)}</tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -234,10 +223,10 @@ function AdminPage(){
 
 function PlaceholderPage({title,icon,desc}){
   return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:400,gap:16}}>
-      <div style={{fontSize:64}}>{icon}</div>
-      <div style={{fontSize:22,fontWeight:800}}>{title}</div>
-      <div style={{fontSize:14,color:C.textMuted,textAlign:"center",maxWidth:400}}>{desc}</div>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:300,gap:16,padding:24,textAlign:"center"}}>
+      <div style={{fontSize:56}}>{icon}</div>
+      <div style={{fontSize:20,fontWeight:800}}>{title}</div>
+      <div style={{fontSize:13,color:C.textMuted,maxWidth:380}}>{desc}</div>
       <div style={{...S.chip(C.accent),fontSize:13,padding:"6px 16px"}}>Em desenvolvimento 🚀</div>
     </div>
   );
@@ -263,26 +252,8 @@ function AuthScreen(){
     "auth/too-many-requests":"Muitas tentativas. Aguarde.",
   }[code]||"Erro inesperado. Tente novamente.");
 
-  const handleLogin=async()=>{
-    setError("");setLoading(true);
-    try{await signInWithEmailAndPassword(auth,email,password);}
-    catch(e){setError(errMsg(e.code));}
-    setLoading(false);
-  };
-
-  const handleRegister=async()=>{
-    setError("");setSuccess("");
-    if(!name.trim())return setError("Digite seu nome.");
-    if(password!==confirm)return setError("As senhas não coincidem.");
-    if(password.length<6)return setError("Senha precisa ter pelo menos 6 caracteres.");
-    setLoading(true);
-    try{
-      const cred=await createUserWithEmailAndPassword(auth,email,password);
-      await updateProfile(cred.user,{displayName:name.trim()});
-      setSuccess("Conta criada! Entrando...");
-    }catch(e){setError(errMsg(e.code));}
-    setLoading(false);
-  };
+  const handleLogin=async()=>{setError("");setLoading(true);try{await signInWithEmailAndPassword(auth,email,password);}catch(e){setError(errMsg(e.code));}setLoading(false);};
+  const handleRegister=async()=>{setError("");setSuccess("");if(!name.trim())return setError("Digite seu nome.");if(password!==confirm)return setError("As senhas não coincidem.");if(password.length<6)return setError("Senha precisa ter pelo menos 6 caracteres.");setLoading(true);try{const cred=await createUserWithEmailAndPassword(auth,email,password);await updateProfile(cred.user,{displayName:name.trim()});setSuccess("Conta criada! Entrando...");}catch(e){setError(errMsg(e.code));}setLoading(false);};
 
   return(
     <div style={S.authPage}>
@@ -296,29 +267,11 @@ function AuthScreen(){
         <div style={{fontSize:13,color:C.textMuted,textAlign:"center",marginBottom:28}}>{mode==="login"?"Acesse seu painel de imóveis rurais":"Comece gratuitamente hoje"}</div>
         {error&&<div style={S.errorBox}>⚠️ {error}</div>}
         {success&&<div style={S.successBox}>✅ {success}</div>}
-        {mode==="register"&&(
-          <div style={{marginBottom:16}}>
-            <label style={S.label}>Seu nome completo</label>
-            <input style={S.input} placeholder="Ex: João da Silva" value={name} onChange={e=>setName(e.target.value)}/>
-          </div>
-        )}
-        <div style={{marginBottom:16}}>
-          <label style={S.label}>E-mail</label>
-          <input style={S.input} type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)}/>
-        </div>
-        <div style={{marginBottom:16}}>
-          <label style={S.label}>Senha</label>
-          <input style={S.input} type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&mode==="login"&&handleLogin()}/>
-        </div>
-        {mode==="register"&&(
-          <div style={{marginBottom:16}}>
-            <label style={S.label}>Confirmar senha</label>
-            <input style={S.input} type="password" placeholder="••••••••" value={confirm} onChange={e=>setConfirm(e.target.value)}/>
-          </div>
-        )}
-        <button style={{...S.btn,opacity:loading?0.7:1}} onClick={mode==="login"?handleLogin:handleRegister} disabled={loading}>
-          {loading?"⏳ Aguarde...":mode==="login"?"🚀 Entrar":"✅ Criar conta"}
-        </button>
+        {mode==="register"&&<div style={{marginBottom:16}}><label style={S.label}>Seu nome completo</label><input style={S.input} placeholder="Ex: João da Silva" value={name} onChange={e=>setName(e.target.value)}/></div>}
+        <div style={{marginBottom:16}}><label style={S.label}>E-mail</label><input style={S.input} type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)}/></div>
+        <div style={{marginBottom:16}}><label style={S.label}>Senha</label><input style={S.input} type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&mode==="login"&&handleLogin()}/></div>
+        {mode==="register"&&<div style={{marginBottom:16}}><label style={S.label}>Confirmar senha</label><input style={S.input} type="password" placeholder="••••••••" value={confirm} onChange={e=>setConfirm(e.target.value)}/></div>}
+        <button style={{...S.btn,opacity:loading?0.7:1}} onClick={mode==="login"?handleLogin:handleRegister} disabled={loading}>{loading?"⏳ Aguarde...":mode==="login"?"🚀 Entrar":"✅ Criar conta"}</button>
         <div style={{display:"flex",alignItems:"center",gap:12,margin:"20px 0"}}>
           <div style={{flex:1,height:1,background:C.border}}/><span style={{fontSize:12,color:C.textDim}}>ou</span><div style={{flex:1,height:1,background:C.border}}/>
         </div>
@@ -333,23 +286,57 @@ function AuthScreen(){
   );
 }
 
+function SidebarContent({user,page,setPage,onClose,handleLogout}){
+  const initials=user.displayName?user.displayName.split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase():user.email.substring(0,2).toUpperCase();
+  return(
+    <>
+      <div style={{padding:"20px 18px 16px",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:38,height:38,borderRadius:10,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🌿</div>
+          <div>
+            <div style={{fontSize:19,fontWeight:800,background:`linear-gradient(135deg,${C.accentBright},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AGROMIND</div>
+            <div style={{fontSize:9,color:C.textMuted,letterSpacing:"2px",textTransform:"uppercase"}}>Inteligência Rural</div>
+          </div>
+        </div>
+      </div>
+      <nav style={{flex:1,padding:"14px 10px",overflowY:"auto"}}>
+        {NAV.map(sec=>(
+          <div key={sec.section} style={{marginBottom:20}}>
+            <div style={{fontSize:10,color:C.textDim,letterSpacing:"1.5px",textTransform:"uppercase",padding:"0 8px",marginBottom:6}}>{sec.section}</div>
+            {sec.items.map(item=>(
+              <div key={item.id}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,cursor:"pointer",marginBottom:2,background:page===item.id?`${C.green1}80`:"transparent",border:page===item.id?`1px solid ${C.border}`:"1px solid transparent",color:page===item.id?C.accentBright:C.textMuted,fontSize:13.5,fontWeight:page===item.id?600:400,WebkitTapHighlightColor:"transparent"}}
+                onClick={()=>{setPage(item.id);onClose&&onClose();}}>
+                <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>{item.label}
+              </div>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div style={{padding:"14px 10px",borderTop:`1px solid ${C.border}`,flexShrink:0}}>
+        <div style={{background:`linear-gradient(135deg,${C.green1},${C.card})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:2}}>👤 {user.displayName||"Usuário"}</div>
+          <div style={{fontSize:11,color:C.textMuted,marginBottom:8}}>{user.email}</div>
+          <button style={{width:"100%",padding:"7px 0",borderRadius:8,background:`${C.red}15`,border:`1px solid ${C.red}30`,color:C.red,fontSize:12,fontWeight:600,cursor:"pointer"}} onClick={handleLogout}>🚪 Sair da conta</button>
+        </div>
+        <div style={{background:`linear-gradient(135deg,${C.green1},${C.green2})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"10px 14px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:C.accentBright}}>⭐ PRO ANUAL</div>
+          <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>Consultas ilimitadas · Ativo</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function App(){
   const[user,setUser]=useState(null);
   const[loading,setLoading]=useState(true);
   const[page,setPage]=useState("dashboard");
+  const[drawerOpen,setDrawerOpen]=useState(false);
 
-  useEffect(()=>{
-    const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setLoading(false);});
-    return unsub;
-  },[]);
+  useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setLoading(false);});return unsub;},[]);
 
-  if(loading)return(
-    <div style={{...S.authPage,flexDirection:"column",gap:16}}>
-      <div style={{fontSize:48}}>🌿</div>
-      <div style={{fontSize:18,fontWeight:700,color:C.accentBright}}>Carregando AGROMIND...</div>
-    </div>
-  );
-
+  if(loading)return(<div style={{...S.authPage,flexDirection:"column",gap:16}}><div style={{fontSize:48}}>🌿</div><div style={{fontSize:18,fontWeight:700,color:C.accentBright}}>Carregando AGROMIND...</div></div>);
   if(!user)return <AuthScreen/>;
 
   const handleLogout=async()=>{await signOut(auth);setUser(null);};
@@ -369,70 +356,134 @@ export default function App(){
     admin:<AdminPage/>,
   };
 
+  const isFullPage = page==="mapa"||page==="planos"||page==="admin";
+
   return(
     <div style={S.app}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
-        body{background:#0a0f0a;}
+        body{background:#0a0f0a;overflow-x:hidden;}
         ::-webkit-scrollbar{width:5px;}
         ::-webkit-scrollbar-track{background:#0a0f0a;}
         ::-webkit-scrollbar-thumb{background:#1e3a1e;border-radius:3px;}
         input::placeholder{color:#3d6b3d;}
+
+        .agro-sidebar{
+          position:fixed;top:0;left:0;width:240px;height:100vh;
+          background:${C.surface};border-right:1px solid ${C.border};
+          display:flex;flex-direction:column;z-index:100;
+        }
+        .agro-main{
+          margin-left:240px;min-height:100vh;
+          display:flex;flex-direction:column;
+        }
+        .agro-topbar{
+          background:${C.surface}ee;backdrop-filter:blur(12px);
+          border-bottom:1px solid ${C.border};
+          padding:0 24px;height:64px;
+          display:flex;align-items:center;justify-content:space-between;
+          position:sticky;top:0;z-index:50;
+        }
+        .agro-content{padding:24px;flex:1;}
+        .agro-content-full{flex:1;}
+        .agro-hamburger{display:none;}
+        .agro-overlay{
+          display:none;position:fixed;inset:0;
+          background:rgba(0,0,0,0.65);z-index:200;
+          backdrop-filter:blur(2px);
+        }
+        .agro-overlay.open{display:block;}
+        .agro-drawer{
+          display:none;position:fixed;
+          top:0;left:0;bottom:0;width:280px;
+          background:${C.surface};
+          z-index:300;flex-direction:column;
+          transform:translateX(-100%);
+          transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);
+          overflow:hidden;
+        }
+        .agro-drawer.open{transform:translateX(0);}
+        .agro-bottom-nav{display:none;}
+
+        @media(max-width:768px){
+          .agro-sidebar{display:none!important;}
+          .agro-hamburger{display:flex!important;}
+          .agro-drawer{display:flex!important;}
+          .agro-main{margin-left:0!important;width:100%!important;}
+          .agro-content{padding:14px 12px 80px!important;}
+          .agro-content-full{padding-bottom:64px;}
+          .agro-bottom-nav{
+            display:flex!important;
+            position:fixed;bottom:0;left:0;right:0;
+            background:${C.surface};
+            border-top:1px solid ${C.border};
+            z-index:100;height:64px;
+          }
+        }
+        @supports(padding-bottom:env(safe-area-inset-bottom)){
+          @media(max-width:768px){
+            .agro-bottom-nav{
+              height:calc(64px + env(safe-area-inset-bottom));
+              padding-bottom:env(safe-area-inset-bottom);
+            }
+          }
+        }
       `}</style>
 
-      <div style={S.sidebar}>
-        <div style={{padding:"24px 20px 20px",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:38,height:38,borderRadius:10,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:`0 0 20px ${C.green2}60`}}>🌿</div>
-            <div>
-              <div style={{fontSize:20,fontWeight:800,letterSpacing:"-0.5px",background:`linear-gradient(135deg,${C.accentBright},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AGROMIND</div>
-              <div style={{fontSize:10,color:C.textMuted,letterSpacing:"2px",textTransform:"uppercase",marginTop:1}}>Inteligência Rural</div>
-            </div>
-          </div>
-        </div>
-        <nav style={S.nav}>
-          {NAV.map(sec=>(
-            <div key={sec.section} style={S.navSection}>
-              <div style={S.navSectionTitle}>{sec.section}</div>
-              {sec.items.map(item=>(
-                <div key={item.id} style={S.navItem(page===item.id)} onClick={()=>setPage(item.id)}>
-                  <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>{item.label}
-                </div>
-              ))}
-            </div>
-          ))}
-        </nav>
-        <div style={{padding:"16px 12px",borderTop:`1px solid ${C.border}`}}>
-          <div style={{background:`linear-gradient(135deg,${C.green1},${C.card})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"12px 14px",marginBottom:8}}>
-            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:2}}>👤 {user.displayName||"Usuário"}</div>
-            <div style={{fontSize:11,color:C.textMuted,marginBottom:8}}>{user.email}</div>
-            <button style={{width:"100%",padding:"7px 0",borderRadius:8,background:`${C.red}15`,border:`1px solid ${C.red}30`,color:C.red,fontSize:12,fontWeight:600,cursor:"pointer"}} onClick={handleLogout}>🚪 Sair da conta</button>
-          </div>
-          <div style={{background:`linear-gradient(135deg,${C.green1},${C.green2})`,border:`1px solid ${C.borderLight}`,borderRadius:10,padding:"10px 14px"}}>
-            <div style={{fontSize:12,fontWeight:700,color:C.accentBright}}>⭐ PRO ANUAL</div>
-            <div style={{fontSize:11,color:C.textMuted,marginTop:2}}>Consultas ilimitadas · Ativo</div>
-          </div>
-        </div>
+      {/* Overlay */}
+      <div className={`agro-overlay ${drawerOpen?"open":""}`} onClick={()=>setDrawerOpen(false)}/>
+
+      {/* Drawer mobile */}
+      <div className={`agro-drawer ${drawerOpen?"open":""}`}>
+        <SidebarContent user={user} page={page} setPage={setPage} onClose={()=>setDrawerOpen(false)} handleLogout={handleLogout}/>
       </div>
 
-      <div style={S.main}>
-        <div style={S.topbar}>
-          <div style={{fontSize:17,fontWeight:700}}>{allItems.find(i=>i.id===page)?.label||"Dashboard"}</div>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:36,height:36,borderRadius:8,background:C.card,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",fontSize:16}}>
-              🔔<div style={{position:"absolute",top:6,right:6,width:7,height:7,borderRadius:"50%",background:C.accent,border:`1.5px solid ${C.surface}`}}/>
+      {/* Sidebar desktop */}
+      <aside className="agro-sidebar">
+        <SidebarContent user={user} page={page} setPage={setPage} handleLogout={handleLogout}/>
+      </aside>
+
+      {/* Main */}
+      <div className="agro-main">
+        {/* Topbar */}
+        <div className="agro-topbar">
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button className="agro-hamburger" onClick={()=>setDrawerOpen(true)}
+              style={{width:40,height:40,borderRadius:10,background:C.card,border:`1px solid ${C.border}`,color:C.text,cursor:"pointer",fontSize:20,alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1}}>
+              ☰
+            </button>
+            <div style={{fontSize:"clamp(14px,3vw,17px)",fontWeight:700}}>
+              {allItems.find(i=>i.id===page)?.label||"Dashboard"}
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:8,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 12px 6px 6px"}}>
-              <div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{initials}</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:34,height:34,borderRadius:8,background:C.card,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",fontSize:15}}>
+              🔔<div style={{position:"absolute",top:5,right:5,width:7,height:7,borderRadius:"50%",background:C.accent,border:`1.5px solid ${C.surface}`}}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 10px 5px 5px",cursor:"pointer"}}>
+              <div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${C.green2},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{initials}</div>
               <span style={{fontSize:13,fontWeight:600}}>{user.displayName?.split(" ")[0]||"Usuário"}</span>
             </div>
           </div>
         </div>
-        <div style={page==="planos"||page==="admin"||page==="mapa"?{}:S.content}>
+
+        {/* Conteúdo */}
+        <div className={isFullPage?"agro-content-full":"agro-content"}>
           {pageMap[page]||pageMap.dashboard}
         </div>
       </div>
+
+      {/* Bottom Nav mobile */}
+      <nav className="agro-bottom-nav">
+        {BOTTOM_NAV.map(item=>(
+          <div key={item.id} onClick={()=>setPage(item.id)}
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,cursor:"pointer",color:page===item.id?C.accent:C.textMuted,borderTop:page===item.id?`2px solid ${C.accent}`:"2px solid transparent",paddingTop:4,WebkitTapHighlightColor:"transparent",userSelect:"none"}}>
+            <span style={{fontSize:20}}>{item.icon}</span>
+            <span style={{fontSize:9,fontWeight:page===item.id?700:400}}>{item.label}</span>
+          </div>
+        ))}
+      </nav>
     </div>
   );
 }
