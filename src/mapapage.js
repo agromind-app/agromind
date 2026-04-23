@@ -27,7 +27,6 @@ const FAZENDA_MOCK = {
   area: "1.284,7 ha",
   ccir: "800.429.7412-9",
   itr: "R$ 2.847,00/ano",
-  situacao: "Regular",
   proprietario: "Agropecuária Horizonte Ltda.",
   modulos: "42,8 módulos fiscais",
   sigef: "Certificado",
@@ -46,17 +45,14 @@ export default function MapaPage() {
   const [fazenda] = useState(FAZENDA_MOCK);
   const [kmlNome, setKmlNome] = useState(null);
   const [searchVal, setSearchVal] = useState("");
-  const [painelAberto, setPainelAberto] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
     if (leafletMap.current) return;
-
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
     document.head.appendChild(link);
-
     const script = document.createElement("script");
     script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
     script.onload = () => initMap();
@@ -66,33 +62,27 @@ export default function MapaPage() {
   const initMap = () => {
     if (!mapRef.current || leafletMap.current) return;
     const L = window.L;
-
     const map = L.map(mapRef.current, {
       center: [FAZENDA_MOCK.coordenadas.lat, FAZENDA_MOCK.coordenadas.lng],
       zoom: 13,
       zoomControl: false,
     });
-
     L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { attribution: "© Esri", maxZoom: 19 }
     ).addTo(map);
-
     L.control.zoom({ position: "bottomright" }).addTo(map);
-
     const lat = FAZENDA_MOCK.coordenadas.lat;
     const lng = FAZENDA_MOCK.coordenadas.lng;
     const offset = 0.05;
-
     const poligono = L.polygon([
-      [lat + offset,     lng - offset * 0.5],
-      [lat + offset,     lng + offset],
-      [lat,              lng + offset * 1.5],
-      [lat - offset,     lng + offset],
-      [lat - offset,     lng - offset * 0.5],
-      [lat,              lng - offset * 1.2],
+      [lat + offset,      lng - offset * 0.5],
+      [lat + offset,      lng + offset],
+      [lat,               lng + offset * 1.5],
+      [lat - offset,      lng + offset],
+      [lat - offset,      lng - offset * 0.5],
+      [lat,               lng - offset * 1.2],
     ], { color:"#22c55e", weight:3, fillColor:"#22c55e", fillOpacity:0.15 }).addTo(map);
-
     L.polygon([
       [lat + offset * 0.3, lng - offset * 0.3],
       [lat + offset * 0.5, lng + offset * 0.3],
@@ -100,19 +90,16 @@ export default function MapaPage() {
       [lat,                lng + offset * 0.4],
       [lat - offset * 0.1, lng],
     ], { color:"#60a5fa", weight:2, fillColor:"#60a5fa", fillOpacity:0.2, dashArray:"5,5" }).addTo(map);
-
     L.polygon([
       [lat - offset * 0.2, lng - offset * 0.4],
       [lat - offset * 0.1, lng + offset * 0.1],
       [lat - offset * 0.4, lng + offset * 0.2],
       [lat - offset * 0.5, lng - offset * 0.2],
     ], { color:"#4ade80", weight:2, fillColor:"#4ade80", fillOpacity:0.25, dashArray:"8,4" }).addTo(map);
-
     const icon = L.divIcon({
       html: `<div style="background:linear-gradient(135deg,#12803f,#22c55e);width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.4)"></div>`,
       iconSize: [36, 36], iconAnchor: [18, 36], className: "",
     });
-
     const marker = L.marker([lat, lng], { icon }).addTo(map);
     marker.bindPopup(`
       <div style="font-family:sans-serif;min-width:200px">
@@ -124,7 +111,6 @@ export default function MapaPage() {
         <div style="font-size:11px;color:#22c55e;font-weight:700">✅ Situação Regular</div>
       </div>
     `);
-
     leafletMap.current = map;
     map.fitBounds(poligono.getBounds(), { padding: [40, 40] });
   };
@@ -144,9 +130,7 @@ export default function MapaPage() {
     setTipoMapa(tipo);
   };
 
-  const toggleCamada = (id) => {
-    setCamadas(prev => prev.map(c => c.id === id ? { ...c, ativa: !c.ativa } : c));
-  };
+  const toggleCamada = (id) => setCamadas(prev => prev.map(c => c.id === id ? { ...c, ativa: !c.ativa } : c));
 
   const importarKML = (e) => {
     const file = e.target.files[0];
@@ -159,17 +143,17 @@ export default function MapaPage() {
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${fazenda.nome}</name>
+    <n>${fazenda.nome}</n>
     <Placemark>
-      <name>${fazenda.nome}</name>
+      <n>${fazenda.nome}</n>
       <Polygon><outerBoundaryIs><LinearRing><coordinates>
-        ${fazenda.coordenadas.lng - 0.05},${fazenda.coordenadas.lat + 0.05},0
-        ${fazenda.coordenadas.lng + 0.05},${fazenda.coordenadas.lat + 0.05},0
-        ${fazenda.coordenadas.lng + 0.075},${fazenda.coordenadas.lat},0
-        ${fazenda.coordenadas.lng + 0.05},${fazenda.coordenadas.lat - 0.05},0
-        ${fazenda.coordenadas.lng - 0.025},${fazenda.coordenadas.lat - 0.05},0
-        ${fazenda.coordenadas.lng - 0.06},${fazenda.coordenadas.lat},0
-        ${fazenda.coordenadas.lng - 0.05},${fazenda.coordenadas.lat + 0.05},0
+        ${fazenda.coordenadas.lng-0.05},${fazenda.coordenadas.lat+0.05},0
+        ${fazenda.coordenadas.lng+0.05},${fazenda.coordenadas.lat+0.05},0
+        ${fazenda.coordenadas.lng+0.075},${fazenda.coordenadas.lat},0
+        ${fazenda.coordenadas.lng+0.05},${fazenda.coordenadas.lat-0.05},0
+        ${fazenda.coordenadas.lng-0.025},${fazenda.coordenadas.lat-0.05},0
+        ${fazenda.coordenadas.lng-0.06},${fazenda.coordenadas.lat},0
+        ${fazenda.coordenadas.lng-0.05},${fazenda.coordenadas.lat+0.05},0
       </coordinates></LinearRing></outerBoundaryIs></Polygon>
     </Placemark>
   </Document>
@@ -195,65 +179,42 @@ export default function MapaPage() {
   return (
     <div className="mapa-container" style={{ display:"flex", height:"calc(100vh - 64px)", overflow:"hidden" }}>
       <style>{`
-        /* ── MOBILE ── */
         @media (max-width: 768px) {
           .mapa-container {
             flex-direction: column !important;
             height: auto !important;
-            min-height: calc(100vh - 64px);
+            min-height: calc(100vh - 128px);
             overflow-y: auto !important;
           }
           .mapa-painel-esq {
             width: 100% !important;
-            max-height: none !important;
             border-right: none !important;
             border-bottom: 1px solid #1e3a1e !important;
-            flex-shrink: 0 !important;
           }
           .mapa-centro {
             width: 100% !important;
-            height: 70vw !important;
-            min-height: 280px !important;
-            max-height: 420px !important;
+            height: 72vw !important;
+            min-height: 260px !important;
+            max-height: 400px !important;
             flex: none !important;
           }
-          .mapa-painel-dir {
-            display: none !important;
-          }
-          .mapa-toolbar-camadas {
-            display: none !important;
-          }
-          .mapa-toolbar {
-            padding: 6px 8px !important;
-            gap: 6px !important;
-            flex-wrap: wrap !important;
-          }
-          .mapa-score {
-            top: auto !important;
-            bottom: 50px !important;
-            right: 8px !important;
-            padding: 8px 10px !important;
-          }
-          .mapa-status {
-            top: auto !important;
-            bottom: 50px !important;
-            left: 8px !important;
-            padding: 8px 10px !important;
-          }
+          .mapa-painel-dir   { display: none !important; }
+          .mapa-toolbar-camadas { display: none !important; }
+          .mapa-score        { display: none !important; }
+          .mapa-status       { display: none !important; }
           .mapa-legenda {
-            bottom: 8px !important;
-            left: 8px !important;
+            bottom: 6px !important;
+            left: 6px !important;
             padding: 8px 10px !important;
           }
         }
       `}</style>
 
-      {/* PAINEL ESQUERDO */}
+      {/* ── PAINEL ESQUERDO ── */}
       <div className="mapa-painel-esq" style={{ width:280, background:C.surface, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", flexShrink:0, overflowY:"auto" }}>
 
-        {/* Busca */}
         <div style={{ padding:"14px", borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:8 }}>🔍 Buscar Imóvel</div>
+          <div style={{ fontSize:13, fontWeight:700, marginBottom:8 }}>🔍 Buscar Imóvel</div>
           <div style={{ display:"flex", gap:6 }}>
             <input
               style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 10px", color:C.text, fontSize:12, outline:"none" }}
@@ -265,39 +226,35 @@ export default function MapaPage() {
           </div>
         </div>
 
-        {/* Info fazenda */}
         <div style={{ padding:"14px", borderBottom:`1px solid ${C.border}` }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <div style={{ fontSize:13, fontWeight:700 }}>📋 Dados do Imóvel</div>
             {chip("✓ Regular", C.accent)}
           </div>
-          <div style={{ fontSize:13, fontWeight:800, color:C.accentBright, marginBottom:4 }}>{fazenda.nome}</div>
+          <div style={{ fontSize:13, fontWeight:800, color:C.accentBright, marginBottom:3 }}>{fazenda.nome}</div>
           <div style={{ fontSize:11, color:C.textMuted, marginBottom:10 }}>📍 {fazenda.municipio}</div>
-
           {[
-            ["🌾 Área Total",     fazenda.area],
-            ["📋 CAR",           fazenda.car.substring(0,18)+"..."],
-            ["📄 CCIR",          fazenda.ccir],
-            ["💰 ITR",           fazenda.itr],
-            ["👤 Proprietário",  fazenda.proprietario.substring(0,22)+"..."],
-            ["📐 Módulos Fiscais",fazenda.modulos],
-            ["🗂️ SIGEF",         fazenda.sigef],
-            ["💧 Aplicativo",    fazenda.app],
-            ["🌱 Reserva Legal", fazenda.rl],
+            ["🌾 Área Total",      fazenda.area],
+            ["📋 CAR",            fazenda.car.substring(0,18)+"..."],
+            ["📄 CCIR",           fazenda.ccir],
+            ["💰 ITR",            fazenda.itr],
+            ["👤 Proprietário",   fazenda.proprietario.substring(0,22)+"..."],
+            ["📐 Módulos Fiscais", fazenda.modulos],
+            ["🗂️ SIGEF",          fazenda.sigef],
+            ["💧 Aplicativo",     fazenda.app],
+            ["🌱 Reserva Legal",  fazenda.rl],
           ].map(([l, v]) => (
             <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.border}`, fontSize:11 }}>
               <span style={{ color:C.textMuted }}>{l}</span>
               <span style={{ fontWeight:600, color:C.text, textAlign:"right", maxWidth:130 }}>{v}</span>
             </div>
           ))}
-
           <div style={{ marginTop:10, display:"flex", gap:6, flexWrap:"wrap" }}>
             {chip("⛔ Sem Embargo", C.accent)}
             {chip("📡 Sem Alerta PRODES", C.accent)}
           </div>
         </div>
 
-        {/* Coordenadas */}
         <div style={{ padding:"14px", borderBottom:`1px solid ${C.border}` }}>
           <div style={{ fontSize:12, fontWeight:700, marginBottom:8 }}>📍 Coordenadas</div>
           {[["Latitude", `${fazenda.coordenadas.lat}°`], ["Longitude", `${fazenda.coordenadas.lng}°`]].map(([l,v]) => (
@@ -311,7 +268,6 @@ export default function MapaPage() {
           </button>
         </div>
 
-        {/* Ações */}
         <div style={{ padding:"14px" }}>
           <div style={{ fontSize:12, fontWeight:700, marginBottom:10 }}>⚡ Ações</div>
           <input type="file" accept=".kml,.kmz" ref={fileRef} style={{ display:"none" }} onChange={importarKML} />
@@ -329,11 +285,10 @@ export default function MapaPage() {
         </div>
       </div>
 
-      {/* MAPA + CONTROLES */}
+      {/* ── MAPA ── */}
       <div className="mapa-centro" style={{ flex:1, position:"relative", display:"flex", flexDirection:"column", minWidth:0 }}>
 
-        {/* Toolbar */}
-        <div className="mapa-toolbar" style={{ background:`${C.surface}f0`, backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}`, padding:"8px 14px", display:"flex", alignItems:"center", gap:8, flexShrink:0, flexWrap:"wrap" }}>
+        <div style={{ background:`${C.surface}f0`, backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}`, padding:"8px 14px", display:"flex", alignItems:"center", gap:8, flexShrink:0, flexWrap:"wrap" }}>
           <div style={{ display:"flex", background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:3, gap:2 }}>
             {[["satellite","🛰️ Satélite"],["mapa","🗺️ Mapa"],["terreno","🏔️ Terreno"]].map(([k,l]) => (
               <button key={k} onClick={() => trocarMapa(k)} style={{ padding:"5px 10px", borderRadius:6, border:"none", cursor:"pointer", fontSize:11, fontWeight:tipoMapa===k?700:400, background:tipoMapa===k?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent", color:tipoMapa===k?C.text:C.textMuted }}>
@@ -341,7 +296,6 @@ export default function MapaPage() {
               </button>
             ))}
           </div>
-
           <div className="mapa-toolbar-camadas" style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
             {camadas.slice(0,5).map(c => (
               <button key={c.id} onClick={() => toggleCamada(c.id)} style={{ padding:"4px 9px", borderRadius:20, border:`1px solid ${c.ativa ? c.color+"60" : C.border}`, background:c.ativa ? `${c.color}20` : "transparent", color:c.ativa ? c.color : C.textDim, fontSize:11, fontWeight:c.ativa?600:400, cursor:"pointer" }}>
@@ -349,19 +303,17 @@ export default function MapaPage() {
               </button>
             ))}
           </div>
-
           <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
             <button onClick={() => fileRef.current?.click()} style={{ padding:"5px 10px", borderRadius:8, background:C.card, border:`1px solid ${C.border}`, color:C.accentBright, fontSize:11, fontWeight:600, cursor:"pointer" }}>📥 KML</button>
             <button onClick={exportarKML} style={{ padding:"5px 10px", borderRadius:8, background:`linear-gradient(135deg,${C.green2},${C.green3})`, border:"none", color:C.text, fontSize:11, fontWeight:600, cursor:"pointer" }}>📤 Exportar</button>
           </div>
         </div>
 
-        {/* Mapa */}
         <div ref={mapRef} style={{ flex:1, background:`linear-gradient(135deg,${C.bg},#0d2010)` }} />
 
         {/* Legenda */}
-        <div className="mapa-legenda" style={{ position:"absolute", bottom:40, left:16, background:`${C.surface}f0`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", zIndex:1000 }}>
-          <div style={{ fontSize:10, fontWeight:700, color:C.textMuted, marginBottom:6, textTransform:"uppercase" }}>Legenda</div>
+        <div className="mapa-legenda" style={{ position:"absolute", bottom:40, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", zIndex:1000 }}>
+          <div style={{ fontSize:10, fontWeight:700, color:C.textMuted, marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Legenda</div>
           {camadas.filter(c=>c.ativa).map(c => (
             <div key={c.id} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:4, fontSize:11 }}>
               <div style={{ width:16, height:4, borderRadius:2, background:c.color, flexShrink:0 }} />
@@ -370,16 +322,16 @@ export default function MapaPage() {
           ))}
         </div>
 
-        {/* Score */}
-        <div className="mapa-score" style={{ position:"absolute", top:70, right:16, background:`${C.surface}f0`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", zIndex:1000, textAlign:"center", minWidth:110 }}>
+        {/* Score — oculto mobile */}
+        <div className="mapa-score" style={{ position:"absolute", top:70, right:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", zIndex:1000, textAlign:"center", minWidth:110 }}>
           <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>🤖 Score IA</div>
           <div style={{ fontSize:30, fontWeight:900, color:C.accentBright, lineHeight:1 }}>78</div>
           <div style={{ fontSize:10, color:C.textMuted }}>/100</div>
           <div style={{ fontSize:10, color:C.accent, marginTop:4, fontWeight:600 }}>Baixo Risco</div>
         </div>
 
-        {/* Status */}
-        <div className="mapa-status" style={{ position:"absolute", top:70, left:16, background:`${C.surface}f0`, backdropFilter:"blur(12px)", border:`1px solid ${C.accent}40`, borderRadius:10, padding:"10px 12px", zIndex:1000 }}>
+        {/* Status — oculto mobile */}
+        <div className="mapa-status" style={{ position:"absolute", top:70, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.accent}40`, borderRadius:10, padding:"10px 12px", zIndex:1000 }}>
           <div style={{ fontSize:11, fontWeight:700, color:C.accent, marginBottom:4 }}>✅ Status Ambiental</div>
           <div style={{ fontSize:11, color:C.textMuted }}>⛔ Sem embargo IBAMA</div>
           <div style={{ fontSize:11, color:C.textMuted }}>📡 Sem alerta PRODES</div>
@@ -387,7 +339,7 @@ export default function MapaPage() {
         </div>
       </div>
 
-      {/* PAINEL DIREITO */}
+      {/* ── PAINEL DIREITO — oculto mobile ── */}
       <div className="mapa-painel-dir" style={{ width:220, background:C.surface, borderLeft:`1px solid ${C.border}`, padding:"16px 14px", flexShrink:0, overflowY:"auto" }}>
         <div style={{ fontSize:13, fontWeight:700, marginBottom:14 }}>🗂️ Camadas</div>
         {camadas.map(c => (
@@ -401,14 +353,13 @@ export default function MapaPage() {
             </div>
           </div>
         ))}
-
         <div style={{ marginTop:20 }}>
           <div style={{ fontSize:13, fontWeight:700, marginBottom:12 }}>📊 Estatísticas</div>
           {[
-            ["Área Total",    "1.284,7 ha", C.accent],
-            ["APP",           "183,4 ha",   C.blue],
-            ["Reserva Legal", "399,8 ha",   C.accentBright],
-            ["Área Produtiva","701,5 ha",   C.yellow],
+            ["Área Total",     "1.284,7 ha", C.accent],
+            ["APP",            "183,4 ha",   C.blue],
+            ["Reserva Legal",  "399,8 ha",   C.accentBright],
+            ["Área Produtiva", "701,5 ha",   C.yellow],
           ].map(([l,v,c]) => (
             <div key={l} style={{ marginBottom:12 }}>
               <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:4 }}>
@@ -421,15 +372,14 @@ export default function MapaPage() {
             </div>
           ))}
         </div>
-
         <div style={{ marginTop:8 }}>
           <div style={{ fontSize:13, fontWeight:700, marginBottom:10 }}>🔗 Links Úteis</div>
           {[
-            ["🌿 SICAR",  "https://www.car.gov.br"],
-            ["⛔ IBAMA",  "https://ibama.gov.br"],
-            ["📡 INPE",   "http://terrabrasilis.dpi.inpe.br"],
-            ["🗂️ SIGEF",  "https://sigef.incra.gov.br"],
-            ["📋 INCRA",  "https://www.gov.br/incra"],
+            ["🌿 SICAR", "https://www.car.gov.br"],
+            ["⛔ IBAMA", "https://ibama.gov.br"],
+            ["📡 INPE",  "http://terrabrasilis.dpi.inpe.br"],
+            ["🗂️ SIGEF", "https://sigef.incra.gov.br"],
+            ["📋 INCRA", "https://www.gov.br/incra"],
           ].map(([l, url]) => (
             <a key={l} href={url} target="_blank" rel="noreferrer"
               style={{ display:"block", fontSize:11, color:C.textMuted, padding:"5px 0", borderBottom:`1px solid ${C.border}`, textDecoration:"none" }}
