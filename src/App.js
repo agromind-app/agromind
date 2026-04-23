@@ -117,7 +117,22 @@ function IAPage({usarCredito,creditos,onSemCreditos}){
     setMsgs(prev=>[...prev,{role:"assistant",content:"",loading:true}]);
     try{
       const systemPrompt=`Você é a IA especialista em imóveis rurais do AgroMind.\n\nFAZENDA ATUAL:\n- Nome: ${FAZENDA_MOCK.nome}\n- CAR: ${FAZENDA_MOCK.car}\n- Município: ${FAZENDA_MOCK.municipio}\n- Área: ${FAZENDA_MOCK.area}\n- APP: ${FAZENDA_MOCK.app}\n- Reserva Legal: ${FAZENDA_MOCK.rl}\n- SIGEF: ${FAZENDA_MOCK.sigef}\n- Embargo IBAMA: ${FAZENDA_MOCK.embargo?"SIM":"Não"}\n- Alerta PRODES: ${FAZENDA_MOCK.prodes?"SIM":"Não"}\n- Score: ${score}/100\n\nResponda em português, seja direto e use emojis. Máximo 200 palavras.`;
-      const response=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:systemPrompt,messages:[...msgs.filter(m=>!m.loading).map(m=>({role:m.role,content:m.content})),{role:"user",content:pergunta}]})});
+      const apiKey = process.env.REACT_APP_ANTHROPIC_KEY;
+      const response=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body:JSON.stringify({
+          model:"claude-haiku-4-5-20251001",
+          max_tokens:1000,
+          system:systemPrompt,
+          messages:[...msgs.filter(m=>!m.loading).map(m=>({role:m.role,content:m.content})),{role:"user",content:pergunta}]
+        })
+      });
       const data=await response.json();
       const resposta=data.content?.[0]?.text||"Erro ao processar.";
       setMsgs(prev=>[...prev.filter(m=>!m.loading),{role:"assistant",content:resposta}]);
