@@ -176,6 +176,33 @@ export default function MapaPage() {
     </span>
   );
 
+  // Painel de Score + Status para mobile (abaixo do mapa)
+  const PainelMobileInfo = () => (
+    <div className="mapa-mobile-info" style={{ display:"none", padding:"14px", gap:12, borderTop:`1px solid ${C.border}`, background:C.surface }}>
+      {/* Score IA */}
+      <div style={{ flex:1, background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px", textAlign:"center" }}>
+        <div style={{ fontSize:11, color:C.textMuted, marginBottom:6 }}>🤖 Score IA</div>
+        <div style={{ fontSize:36, fontWeight:900, color:C.accentBright, lineHeight:1 }}>78</div>
+        <div style={{ fontSize:10, color:C.textMuted }}>/100</div>
+        <div style={{ fontSize:11, color:C.accent, marginTop:6, fontWeight:700 }}>✅ Baixo Risco</div>
+      </div>
+      {/* Status Ambiental */}
+      <div style={{ flex:1, background:C.card, border:`1px solid ${C.accent}30`, borderRadius:14, padding:"14px" }}>
+        <div style={{ fontSize:11, fontWeight:700, color:C.accent, marginBottom:8 }}>✅ Status Ambiental</div>
+        {[
+          ["⛔", "Sem embargo IBAMA", C.accent],
+          ["📡", "Sem alerta PRODES", C.accent],
+          ["🌱", "Moratória: Conforme", C.accent],
+        ].map(([icon, txt, c]) => (
+          <div key={txt} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:5, fontSize:11 }}>
+            <span>{icon}</span>
+            <span style={{ color:C.textMuted }}>{txt}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="mapa-container" style={{ display:"flex", height:"calc(100vh - 64px)", overflow:"hidden" }}>
       <style>{`
@@ -198,14 +225,18 @@ export default function MapaPage() {
             max-height: 400px !important;
             flex: none !important;
           }
-          .mapa-painel-dir   { display: none !important; }
-          .mapa-toolbar-camadas { display: none !important; }
-          .mapa-score        { display: none !important; }
-          .mapa-status       { display: none !important; }
+          .mapa-painel-dir        { display: none !important; }
+          .mapa-toolbar-camadas  { display: none !important; }
+          .mapa-score            { display: none !important; }
+          .mapa-status           { display: none !important; }
           .mapa-legenda {
             bottom: 6px !important;
             left: 6px !important;
             padding: 8px 10px !important;
+          }
+          /* Mostra painel de info abaixo do mapa */
+          .mapa-mobile-info {
+            display: flex !important;
           }
         }
       `}</style>
@@ -234,15 +265,15 @@ export default function MapaPage() {
           <div style={{ fontSize:13, fontWeight:800, color:C.accentBright, marginBottom:3 }}>{fazenda.nome}</div>
           <div style={{ fontSize:11, color:C.textMuted, marginBottom:10 }}>📍 {fazenda.municipio}</div>
           {[
-            ["🌾 Área Total",      fazenda.area],
-            ["📋 CAR",            fazenda.car.substring(0,18)+"..."],
-            ["📄 CCIR",           fazenda.ccir],
-            ["💰 ITR",            fazenda.itr],
-            ["👤 Proprietário",   fazenda.proprietario.substring(0,22)+"..."],
-            ["📐 Módulos Fiscais", fazenda.modulos],
-            ["🗂️ SIGEF",          fazenda.sigef],
-            ["💧 Aplicativo",     fazenda.app],
-            ["🌱 Reserva Legal",  fazenda.rl],
+            ["🌾 Área Total",       fazenda.area],
+            ["📋 CAR",             fazenda.car.substring(0,18)+"..."],
+            ["📄 CCIR",            fazenda.ccir],
+            ["💰 ITR",             fazenda.itr],
+            ["👤 Proprietário",    fazenda.proprietario.substring(0,22)+"..."],
+            ["📐 Módulos Fiscais",  fazenda.modulos],
+            ["🗂️ SIGEF",           fazenda.sigef],
+            ["💧 Aplicativo",      fazenda.app],
+            ["🌱 Reserva Legal",   fazenda.rl],
           ].map(([l, v]) => (
             <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.border}`, fontSize:11 }}>
               <span style={{ color:C.textMuted }}>{l}</span>
@@ -285,61 +316,70 @@ export default function MapaPage() {
         </div>
       </div>
 
-      {/* ── MAPA ── */}
-      <div className="mapa-centro" style={{ flex:1, position:"relative", display:"flex", flexDirection:"column", minWidth:0 }}>
+      {/* ── MAPA + INFO MOBILE ── */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, overflow:"hidden" }}>
 
-        <div style={{ background:`${C.surface}f0`, backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}`, padding:"8px 14px", display:"flex", alignItems:"center", gap:8, flexShrink:0, flexWrap:"wrap" }}>
-          <div style={{ display:"flex", background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:3, gap:2 }}>
-            {[["satellite","🛰️ Satélite"],["mapa","🗺️ Mapa"],["terreno","🏔️ Terreno"]].map(([k,l]) => (
-              <button key={k} onClick={() => trocarMapa(k)} style={{ padding:"5px 10px", borderRadius:6, border:"none", cursor:"pointer", fontSize:11, fontWeight:tipoMapa===k?700:400, background:tipoMapa===k?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent", color:tipoMapa===k?C.text:C.textMuted }}>
-                {l}
-              </button>
-            ))}
-          </div>
-          <div className="mapa-toolbar-camadas" style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-            {camadas.slice(0,5).map(c => (
-              <button key={c.id} onClick={() => toggleCamada(c.id)} style={{ padding:"4px 9px", borderRadius:20, border:`1px solid ${c.ativa ? c.color+"60" : C.border}`, background:c.ativa ? `${c.color}20` : "transparent", color:c.ativa ? c.color : C.textDim, fontSize:11, fontWeight:c.ativa?600:400, cursor:"pointer" }}>
-                {c.icon} {c.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
-            <button onClick={() => fileRef.current?.click()} style={{ padding:"5px 10px", borderRadius:8, background:C.card, border:`1px solid ${C.border}`, color:C.accentBright, fontSize:11, fontWeight:600, cursor:"pointer" }}>📥 KML</button>
-            <button onClick={exportarKML} style={{ padding:"5px 10px", borderRadius:8, background:`linear-gradient(135deg,${C.green2},${C.green3})`, border:"none", color:C.text, fontSize:11, fontWeight:600, cursor:"pointer" }}>📤 Exportar</button>
-          </div>
-        </div>
-
-        <div ref={mapRef} style={{ flex:1, background:`linear-gradient(135deg,${C.bg},#0d2010)` }} />
-
-        {/* Legenda */}
-        <div className="mapa-legenda" style={{ position:"absolute", bottom:40, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", zIndex:1000 }}>
-          <div style={{ fontSize:10, fontWeight:700, color:C.textMuted, marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Legenda</div>
-          {camadas.filter(c=>c.ativa).map(c => (
-            <div key={c.id} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:4, fontSize:11 }}>
-              <div style={{ width:16, height:4, borderRadius:2, background:c.color, flexShrink:0 }} />
-              <span style={{ color:C.textMuted }}>{c.label}</span>
+        {/* Mapa */}
+        <div className="mapa-centro" style={{ flex:1, position:"relative", display:"flex", flexDirection:"column", minWidth:0 }}>
+          {/* Toolbar */}
+          <div style={{ background:`${C.surface}f0`, backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}`, padding:"8px 14px", display:"flex", alignItems:"center", gap:8, flexShrink:0, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:3, gap:2 }}>
+              {[["satellite","🛰️ Satélite"],["mapa","🗺️ Mapa"],["terreno","🏔️ Terreno"]].map(([k,l]) => (
+                <button key={k} onClick={() => trocarMapa(k)} style={{ padding:"5px 10px", borderRadius:6, border:"none", cursor:"pointer", fontSize:11, fontWeight:tipoMapa===k?700:400, background:tipoMapa===k?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent", color:tipoMapa===k?C.text:C.textMuted }}>
+                  {l}
+                </button>
+              ))}
             </div>
-          ))}
+            <div className="mapa-toolbar-camadas" style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+              {camadas.slice(0,5).map(c => (
+                <button key={c.id} onClick={() => toggleCamada(c.id)} style={{ padding:"4px 9px", borderRadius:20, border:`1px solid ${c.ativa ? c.color+"60" : C.border}`, background:c.ativa ? `${c.color}20` : "transparent", color:c.ativa ? c.color : C.textDim, fontSize:11, fontWeight:c.ativa?600:400, cursor:"pointer" }}>
+                  {c.icon} {c.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
+              <button onClick={() => fileRef.current?.click()} style={{ padding:"5px 10px", borderRadius:8, background:C.card, border:`1px solid ${C.border}`, color:C.accentBright, fontSize:11, fontWeight:600, cursor:"pointer" }}>📥 KML</button>
+              <button onClick={exportarKML} style={{ padding:"5px 10px", borderRadius:8, background:`linear-gradient(135deg,${C.green2},${C.green3})`, border:"none", color:C.text, fontSize:11, fontWeight:600, cursor:"pointer" }}>📤 Exportar</button>
+            </div>
+          </div>
+
+          {/* Mapa Leaflet */}
+          <div ref={mapRef} style={{ flex:1, background:`linear-gradient(135deg,${C.bg},#0d2010)` }} />
+
+          {/* Legenda */}
+          <div className="mapa-legenda" style={{ position:"absolute", bottom:40, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", zIndex:1000 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.textMuted, marginBottom:6, textTransform:"uppercase", letterSpacing:"0.5px" }}>Legenda</div>
+            {camadas.filter(c=>c.ativa).map(c => (
+              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:4, fontSize:11 }}>
+                <div style={{ width:16, height:4, borderRadius:2, background:c.color, flexShrink:0 }} />
+                <span style={{ color:C.textMuted }}>{c.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Score — visível só desktop */}
+          <div className="mapa-score" style={{ position:"absolute", top:70, right:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", zIndex:1000, textAlign:"center", minWidth:110 }}>
+            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>🤖 Score IA</div>
+            <div style={{ fontSize:30, fontWeight:900, color:C.accentBright, lineHeight:1 }}>78</div>
+            <div style={{ fontSize:10, color:C.textMuted }}>/100</div>
+            <div style={{ fontSize:10, color:C.accent, marginTop:4, fontWeight:600 }}>Baixo Risco</div>
+          </div>
+
+          {/* Status — visível só desktop */}
+          <div className="mapa-status" style={{ position:"absolute", top:70, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.accent}40`, borderRadius:10, padding:"10px 12px", zIndex:1000 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:C.accent, marginBottom:4 }}>✅ Status Ambiental</div>
+            <div style={{ fontSize:11, color:C.textMuted }}>⛔ Sem embargo IBAMA</div>
+            <div style={{ fontSize:11, color:C.textMuted }}>📡 Sem alerta PRODES</div>
+            <div style={{ fontSize:11, color:C.textMuted }}>🌱 Moratória: Conforme</div>
+          </div>
         </div>
 
-        {/* Score — oculto mobile */}
-        <div className="mapa-score" style={{ position:"absolute", top:70, right:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px", zIndex:1000, textAlign:"center", minWidth:110 }}>
-          <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>🤖 Score IA</div>
-          <div style={{ fontSize:30, fontWeight:900, color:C.accentBright, lineHeight:1 }}>78</div>
-          <div style={{ fontSize:10, color:C.textMuted }}>/100</div>
-          <div style={{ fontSize:10, color:C.accent, marginTop:4, fontWeight:600 }}>Baixo Risco</div>
-        </div>
+        {/* Score + Status abaixo do mapa — só mobile */}
+        <PainelMobileInfo />
 
-        {/* Status — oculto mobile */}
-        <div className="mapa-status" style={{ position:"absolute", top:70, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.accent}40`, borderRadius:10, padding:"10px 12px", zIndex:1000 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:C.accent, marginBottom:4 }}>✅ Status Ambiental</div>
-          <div style={{ fontSize:11, color:C.textMuted }}>⛔ Sem embargo IBAMA</div>
-          <div style={{ fontSize:11, color:C.textMuted }}>📡 Sem alerta PRODES</div>
-          <div style={{ fontSize:11, color:C.textMuted }}>🌱 Moratória: Conforme</div>
-        </div>
       </div>
 
-      {/* ── PAINEL DIREITO — oculto mobile ── */}
+      {/* ── PAINEL DIREITO — só desktop ── */}
       <div className="mapa-painel-dir" style={{ width:220, background:C.surface, borderLeft:`1px solid ${C.border}`, padding:"16px 14px", flexShrink:0, overflowY:"auto" }}>
         <div style={{ fontSize:13, fontWeight:700, marginBottom:14 }}>🗂️ Camadas</div>
         {camadas.map(c => (
