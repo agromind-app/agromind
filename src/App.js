@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { auth, db } from "./firebase";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
-import { doc, onSnapshot, getDoc, setDoc, updateDoc, increment, serverTimestamp, collection, addDoc } from "firebase/firestore";
+import { doc, onSnapshot, getDoc, setDoc, updateDoc, increment, serverTimestamp, collection, addDoc, query, orderBy, limit, getDocs } from "firebase/firestore";
 import MapaPage from "./mapapage";
 
 const C = {
@@ -44,6 +44,36 @@ function limparMarkdown(texto) {
     .replace(/#{1,6}\s+/g, "")
     .replace(/`(.+?)`/g, "$1")
     .trim();
+}
+
+// ── Salva consulta no Firestore ──
+async function salvarConsultaFS(uid, dados) {
+  try {
+    const nome = dados.sicar?.nome || dados.car || "Imóvel Rural";
+    const car = dados.car || dados.sicar?.car || "—";
+    const municipio = dados.sicar?.municipio ? `${dados.sicar.municipio}/${dados.sicar.uf}` : "—";
+    const status = dados.ibama?.temEmbargo ? "embargo" : dados.prodes?.temAlerta ? "alerta" : "ok";
+    const score = dados.score?.valor ?? 0;
+
+    await addDoc(collection(db, "usuarios", uid, "historico"), {
+      nome,
+      car,
+      municipio,
+      status,
+      score,
+      dadosCompletos: JSON.stringify(dados),
+      criadoEm: serverTimestamp(),
+    });
+  } catch(e) { console.error("Erro ao salvar consulta:", e); }
+}
+
+// ── Busca histórico de consultas do usuário ──
+async function buscarHistoricoFS(uid, qtd = 5) {
+  try {
+    const q = query(collection(db, "usuarios", uid, "historico"), orderBy("criadoEm", "desc"), limit(qtd));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) { return []; }
 }
 
 const TIPOS_BUSCA = [
@@ -109,7 +139,8 @@ function BuscaBox({ onConsultar, buscando }) {
 const PERGUNTAS_RAPIDAS=["Qual o score de risco?","Tem embargo ativo?","A Reserva Legal está regular?","Pode financiar esta propriedade?","Situação ambiental geral?","Calcule o ITR estimado"];
 function ScoreGauge({score}){const cor=score>=70?C.accent:score>=40?C.yellow:C.red;const label=score>=70?"Baixo Risco":score>=40?"Risco Médio":"Alto Risco";return(<div style={{textAlign:"center",padding:"12px 0"}}><div style={{width:90,height:90,borderRadius:"50%",background:`conic-gradient(${cor} 0deg,${cor} ${(score/100)*360}deg,${C.border} ${(score/100)*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}}><div style={{width:68,height:68,borderRadius:"50%",background:C.card,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:20,fontWeight:900,color:cor,lineHeight:1}}>{score}</div><div style={{fontSize:9,color:C.textMuted}}>/100</div></div></div><div style={{fontSize:12,fontWeight:700,color:cor}}>{label}</div></div>);}
 
-function ConsultaPage({ usarCredito, creditos, onSemCreditos, setPage }) {
+// ── CONSULTA PAGE ──
+function ConsultaPage({ user, usarCredito, creditos, onSemCreditos, setPage }) {
   const [buscando, setBuscando] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [erro, setErro] = useState(null);
@@ -141,6 +172,10 @@ function ConsultaPage({ usarCredito, creditos, onSemCreditos, setPage }) {
       const dados = await resp.json();
       if (!dados.sucesso) { setErro(dados.error || "Erro na consulta."); setBuscando(false); return; }
       setResultado(dados);
+
+      // ── Salva no Firestore ──
+      if (user?.uid) await salvarConsultaFS(user.uid, dados);
+
     } catch { setErro("Erro de conexão. Tente novamente."); }
     setBuscando(false);
   };
@@ -308,12 +343,139 @@ function IAPage({usarCredito,creditos,onSemCreditos}){
 }
 
 const precipData=[45,70,30,90,55,20,80,65,40,75,50,35,60,88,42,30,55,70,45,60,30,85,65,50,40,75,60,50,45,70];
-const recentConsultas=[{fazenda:"Faz. Horizonte Verde",car:"MT-5107040-9B4D7A...",data:"20/04/2026",status:"ok"},{fazenda:"Sítio Bela Vista",car:"PA-1502301-AB3D9F...",data:"19/04/2026",status:"alerta"},{fazenda:"Fazenda São João",car:"GO-5208004-C4E2A1...",data:"18/04/2026",status:"ok"},{fazenda:"Agropec. Santa Rosa",car:"MS-5003108-D7F3B2...",data:"17/04/2026",status:"embargo"}];
 
+// ── DASHBOARD com histórico real do Firestore ──
 function Dashboard({user,setPage}){
   const[buscando]=useState(false);
+  const[historico,setHistorico]=useState([]);
+  const[loadingHist,setLoadingHist]=useState(true);
+
+  useEffect(()=>{
+    if(!user?.uid)return;
+    buscarHistoricoFS(user.uid,5).then(h=>{setHistorico(h);setLoadingHist(false);});
+  },[user]);
+
   const irConsultar=(tipo,val)=>{if(val.trim())setPage("consulta");};
-  return(<div><div style={{...S.card,background:`linear-gradient(135deg,${C.card} 0%,${C.green1}40 50%,${C.card} 100%)`,borderRadius:20,padding:"24px 20px",marginBottom:20}}><div style={{fontSize:"clamp(17px,4vw,24px)",fontWeight:800,marginBottom:4}}>🌿 Bem-vindo, {user?.displayName?.split(" ")[0]||"Usuário"}!</div><div style={{color:C.textMuted,fontSize:13,marginBottom:16}}>CAR · ITR · CCIR · GPS · SIGEF · IBAMA · PRODES · Clima · NASA · Cotações</div><BuscaBox onConsultar={irConsultar} buscando={buscando}/></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>{[{icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},{icon:"🌾",val:"34.291",label:"Imóveis",color:C.yellow},{icon:"🚨",val:"128",label:"Alertas",color:C.red},{icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue}].map((s,i)=>(<div key={i} style={{...S.card,display:"flex",alignItems:"center",gap:10,padding:"14px"}}><div style={{width:38,height:38,borderRadius:10,background:`${s.color}20`,border:`1px solid ${s.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div><div><div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div><div style={{fontSize:10,color:C.textMuted,marginTop:1}}>{s.label}</div></div></div>))}</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginBottom:14}}><div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><span style={{fontSize:14,fontWeight:700}}>📋 Consultas Recentes</span><span style={S.chip(C.accent)}>Hoje</span></div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:260}}><thead><tr>{["Fazenda","Data","Status"].map(h=><th key={h} style={S.tableTh}>{h}</th>)}</tr></thead><tbody>{recentConsultas.map((r,i)=>(<tr key={i}><td style={S.tableTd}><div style={{fontWeight:600}}>{r.fazenda}</div><div style={{fontSize:10,color:C.textMuted}}>{r.car}</div></td><td style={{...S.tableTd,color:C.textMuted}}>{r.data}</td><td style={S.tableTd}><span style={S.chip(r.status==="ok"?C.accent:r.status==="alerta"?C.yellow:C.red)}>{r.status==="ok"?"✓ OK":r.status==="alerta"?"⚠ Alerta":"⛔"}</span></td></tr>))}</tbody></table></div></div><div style={{display:"flex",flexDirection:"column",gap:14}}><div style={S.card}><div style={{fontSize:14,fontWeight:700,marginBottom:12,textAlign:"center"}}>🤖 Score IA Médio</div><div style={S.scoreRing}><div style={S.scoreInner}><div style={{fontSize:24,fontWeight:900,color:C.accentBright,lineHeight:1}}>78</div><div style={{fontSize:11,color:C.textMuted}}>/ 100</div></div></div><div style={{textAlign:"center",fontSize:11,color:C.textMuted}}>1.847 consultas hoje</div></div><div style={S.card}><div style={{fontSize:14,fontWeight:700,marginBottom:10}}>📡 Alertas Recentes</div>{[{msg:"Embargo IBAMA ativo",sub:"Faz. Santa Rosa · MS",color:C.red,icon:"⛔"},{msg:"Desmatamento detectado",sub:"Sítio Bela Vista · PA",color:C.orange,icon:"🛸"},{msg:"Moratória do Cerrado",sub:"Faz. Chapada · BA",color:C.yellow,icon:"🌱"}].map((a,i)=>(<div key={i} style={{display:"flex",gap:8,padding:"8px 10px",borderRadius:8,marginBottom:6,border:`1px solid ${a.color}40`,background:`${a.color}08`}}><span>{a.icon}</span><div><div style={{fontSize:12,fontWeight:600,color:a.color}}>{a.msg}</div><div style={{fontSize:11,opacity:0.7}}>{a.sub}</div></div></div>))}</div></div></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}><div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><span style={{fontSize:13,fontWeight:700}}>🌧️ Precipitação — 30 dias</span><span style={S.chip(C.blue)}>Sinop/MT</span></div><div style={S.precipBar}>{precipData.map((v,i)=><div key={i} style={S.precipCol(v)}/>)}</div><div style={{display:"flex",justifyContent:"space-between"}}>{["01","05","10","15","20","25","30"].map(d=><span key={d} style={{fontSize:10,color:C.textDim}}>{d}</span>)}</div></div><div style={S.card}><div style={{fontSize:13,fontWeight:700,marginBottom:14}}>🌿 Composição do Solo</div>{[["Argila",52,C.orange],["Areia",30,C.yellow],["Silte",18,C.accent]].map(([l,p,c])=>(<div key={l} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:C.textMuted}}>{l}</span><span style={{fontWeight:700,color:c}}>{p}%</span></div><div style={{height:6,background:C.bg,borderRadius:3,overflow:"hidden"}}><div style={S.chartBar(p,c)}/></div></div>))}<div style={{marginTop:10,padding:"8px 12px",background:`${C.bg}80`,borderRadius:8,border:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",fontSize:12}}><span style={{color:C.textMuted}}>pH do solo</span><span style={{fontWeight:700,color:C.accentBright}}>6.2 — Ideal</span></div></div></div></div>);
+
+  const formatarData=(ts)=>{
+    if(!ts)return"—";
+    try{
+      const d=ts.toDate?ts.toDate():new Date(ts);
+      return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
+    }catch{return"—";}
+  };
+
+  return(<div>
+    <div style={{...S.card,background:`linear-gradient(135deg,${C.card} 0%,${C.green1}40 50%,${C.card} 100%)`,borderRadius:20,padding:"24px 20px",marginBottom:20}}>
+      <div style={{fontSize:"clamp(17px,4vw,24px)",fontWeight:800,marginBottom:4}}>🌿 Bem-vindo, {user?.displayName?.split(" ")[0]||"Usuário"}!</div>
+      <div style={{color:C.textMuted,fontSize:13,marginBottom:16}}>CAR · ITR · CCIR · GPS · SIGEF · IBAMA · PRODES · Clima · NASA · Cotações</div>
+      <BuscaBox onConsultar={irConsultar} buscando={buscando}/>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>
+      {[{icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},{icon:"🌾",val:"34.291",label:"Imóveis",color:C.yellow},{icon:"🚨",val:"128",label:"Alertas",color:C.red},{icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue}].map((s,i)=>(
+        <div key={i} style={{...S.card,display:"flex",alignItems:"center",gap:10,padding:"14px"}}>
+          <div style={{width:38,height:38,borderRadius:10,background:`${s.color}20`,border:`1px solid ${s.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div>
+          <div><div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div><div style={{fontSize:10,color:C.textMuted,marginTop:1}}>{s.label}</div></div>
+        </div>
+      ))}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginBottom:14}}>
+
+      {/* ── Histórico real do Firestore ── */}
+      <div style={S.card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <span style={{fontSize:14,fontWeight:700}}>📋 Consultas Recentes</span>
+          <span style={S.chip(C.accent)}>Seu histórico</span>
+        </div>
+        {loadingHist?(
+          <div style={{textAlign:"center",padding:"20px 0",color:C.textMuted,fontSize:12}}>⏳ Carregando...</div>
+        ):historico.length===0?(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:32,marginBottom:8}}>🔍</div>
+            <div style={{fontSize:13,color:C.textMuted}}>Nenhuma consulta ainda.</div>
+            <div style={{fontSize:11,color:C.textDim,marginTop:4}}>Faça sua primeira consulta!</div>
+          </div>
+        ):(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:260}}>
+              <thead><tr>{["Fazenda","Data","Status"].map(h=><th key={h} style={S.tableTh}>{h}</th>)}</tr></thead>
+              <tbody>
+                {historico.map((r,i)=>(
+                  <tr key={i}>
+                    <td style={S.tableTd}>
+                      <div style={{fontWeight:600}}>{r.nome?.substring(0,20)}</div>
+                      <div style={{fontSize:10,color:C.textMuted}}>{r.car?.substring(0,18)}...</div>
+                    </td>
+                    <td style={{...S.tableTd,color:C.textMuted,whiteSpace:"nowrap"}}>{formatarData(r.criadoEm)}</td>
+                    <td style={S.tableTd}>
+                      <span style={S.chip(r.status==="ok"?C.accent:r.status==="alerta"?C.yellow:C.red)}>
+                        {r.status==="ok"?"✓ OK":r.status==="alerta"?"⚠ Alerta":"⛔"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={S.card}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:12,textAlign:"center"}}>🤖 Score IA Médio</div>
+          <div style={S.scoreRing}><div style={S.scoreInner}>
+            <div style={{fontSize:24,fontWeight:900,color:C.accentBright,lineHeight:1}}>
+              {historico.length>0?Math.round(historico.reduce((a,h)=>a+(h.score||0),0)/historico.length):78}
+            </div>
+            <div style={{fontSize:11,color:C.textMuted}}>/ 100</div>
+          </div></div>
+          <div style={{textAlign:"center",fontSize:11,color:C.textMuted}}>{historico.length} consulta(s) salva(s)</div>
+        </div>
+        <div style={S.card}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>📡 Alertas Recentes</div>
+          {historico.filter(h=>h.status!=="ok").length>0?(
+            historico.filter(h=>h.status!=="ok").slice(0,3).map((a,i)=>(
+              <div key={i} style={{display:"flex",gap:8,padding:"8px 10px",borderRadius:8,marginBottom:6,border:`1px solid ${a.status==="embargo"?C.red:C.orange}40`,background:`${a.status==="embargo"?C.red:C.orange}08`}}>
+                <span>{a.status==="embargo"?"⛔":"⚠️"}</span>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600,color:a.status==="embargo"?C.red:C.orange}}>{a.nome?.substring(0,22)}</div>
+                  <div style={{fontSize:11,opacity:0.7}}>{a.municipio}</div>
+                </div>
+              </div>
+            ))
+          ):(
+            [{msg:"Embargo IBAMA ativo",sub:"Faz. Santa Rosa · MS",color:C.red,icon:"⛔"},{msg:"Desmatamento detectado",sub:"Sítio Bela Vista · PA",color:C.orange,icon:"🛸"},{msg:"Moratória do Cerrado",sub:"Faz. Chapada · BA",color:C.yellow,icon:"🌱"}].map((a,i)=>(
+              <div key={i} style={{display:"flex",gap:8,padding:"8px 10px",borderRadius:8,marginBottom:6,border:`1px solid ${a.color}40`,background:`${a.color}08`}}>
+                <span>{a.icon}</span><div><div style={{fontSize:12,fontWeight:600,color:a.color}}>{a.msg}</div><div style={{fontSize:11,opacity:0.7}}>{a.sub}</div></div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
+      <div style={S.card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <span style={{fontSize:13,fontWeight:700}}>🌧️ Precipitação — 30 dias</span>
+          <span style={S.chip(C.blue)}>Sinop/MT</span>
+        </div>
+        <div style={S.precipBar}>{precipData.map((v,i)=><div key={i} style={S.precipCol(v)}/>)}</div>
+        <div style={{display:"flex",justifyContent:"space-between"}}>{["01","05","10","15","20","25","30"].map(d=><span key={d} style={{fontSize:10,color:C.textDim}}>{d}</span>)}</div>
+      </div>
+      <div style={S.card}>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:14}}>🌿 Composição do Solo</div>
+        {[["Argila",52,C.orange],["Areia",30,C.yellow],["Silte",18,C.accent]].map(([l,p,c])=>(
+          <div key={l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:C.textMuted}}>{l}</span><span style={{fontWeight:700,color:c}}>{p}%</span></div>
+            <div style={{height:6,background:C.bg,borderRadius:3,overflow:"hidden"}}><div style={S.chartBar(p,c)}/></div>
+          </div>
+        ))}
+        <div style={{marginTop:10,padding:"8px 12px",background:`${C.bg}80`,borderRadius:8,border:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",fontSize:12}}>
+          <span style={{color:C.textMuted}}>pH do solo</span><span style={{fontWeight:700,color:C.accentBright}}>6.2 — Ideal</span>
+        </div>
+      </div>
+    </div>
+  </div>);
 }
 
 function PlanosPage({user}){const[loadingPlano,setLoadingPlano]=useState(null);const[msgPagamento,setMsgPagamento]=useState(null);useEffect(()=>{const params=new URLSearchParams(window.location.search);const status=params.get("pagamento");if(status==="sucesso")setMsgPagamento({tipo:"sucesso",texto:"✅ Pagamento aprovado! Seus créditos foram liberados."});else if(status==="pendente")setMsgPagamento({tipo:"aviso",texto:"⏳ Pagamento pendente. Aguarde a confirmação."});else if(status==="erro")setMsgPagamento({tipo:"erro",texto:"❌ Pagamento não concluído. Tente novamente."});},[]);const assinar=async(planoId)=>{setLoadingPlano(planoId);try{const res=await fetch("/api/pagamento",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({plano:planoId,userId:user?.uid,userEmail:user?.email})});const data=await res.json();if(data.sandboxInitPoint){window.location.href=data.sandboxInitPoint;}else{alert("Erro ao gerar pagamento.");}}catch{alert("Erro de conexão.");}setLoadingPlano(null);};const planos=[{id:"starter_mensal",title:"Starter",price:"49",per:"/mês",sub:"20 consultas inclusas",featured:false,features:["20 consultas/mês","Dados CAR completo","Score IA básico","Mapa interativo","Suporte por e-mail"]},{id:"pro_mensal",title:"Pro Mensal",price:"99",per:"/mês",sub:"100 consultas inclusas",featured:true,badge:"🔥 MAIS VENDIDO",features:["100 consultas/mês","INCRA, IBAMA, PRODES","Score IA avançado","Laudo PDF automático","Chat IA com a fazenda","WhatsApp Bot","Exportar KML"]},{id:"pro_anual",title:"Pro Anual",price:"79",per:"/mês · cobrado anualmente",sub:"100 consultas inclusas",featured:false,badge:"💰 ECONOMIA 20%",features:["100 consultas/mês","Tudo do Pro Mensal","Relatórios avançados","Alertas automáticos","Suporte prioritário"]}];return(<div style={{padding:"20px 16px"}}>{msgPagamento&&(<div style={{background:msgPagamento.tipo==="sucesso"?`${C.accent}15`:msgPagamento.tipo==="aviso"?`${C.yellow}15`:`${C.red}15`,border:`1px solid ${msgPagamento.tipo==="sucesso"?C.accent:msgPagamento.tipo==="aviso"?C.yellow:C.red}40`,borderRadius:12,padding:"14px 18px",marginBottom:20,fontSize:14,fontWeight:600,color:msgPagamento.tipo==="sucesso"?C.accentBright:msgPagamento.tipo==="aviso"?C.yellow:C.red,textAlign:"center"}}>{msgPagamento.texto}</div>)}<div style={{textAlign:"center",marginBottom:28}}><div style={{fontSize:"clamp(20px,5vw,30px)",fontWeight:900,marginBottom:8}}>Planos AGROMIND</div><div style={{color:C.textMuted,fontSize:13}}>Mais completo que o Dados Fazenda · Cancele quando quiser</div></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,maxWidth:880,margin:"0 auto"}}>{planos.map((p)=>(<div key={p.id} style={{background:p.featured?`linear-gradient(160deg,${C.green1},${C.card})`:C.card,border:`1px solid ${p.featured?C.borderLight:C.border}`,borderRadius:18,padding:"24px 18px",position:"relative",boxShadow:p.featured?`0 0 40px ${C.green2}30`:"none"}}>{p.badge&&<div style={{position:"absolute",top:-11,left:"50%",transform:"translateX(-50%)",background:`linear-gradient(135deg,${C.accent},${C.green2})`,color:C.bg,fontSize:10,fontWeight:800,padding:"3px 12px",borderRadius:20,whiteSpace:"nowrap"}}>{p.badge}</div>}<div style={{fontSize:15,fontWeight:700,marginBottom:4}}>{p.title}</div><div style={{fontSize:34,fontWeight:900,color:C.accentBright,lineHeight:1.1}}>R${p.price}</div><div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>{p.per}</div><div style={{fontSize:11,color:C.accent,fontWeight:600,marginBottom:16}}>✓ {p.sub} · Extras R$2,00</div>{p.features.map(f=><div key={f} style={{display:"flex",gap:8,fontSize:12,marginBottom:7,color:C.textMuted}}><span style={{color:C.accent}}>✓</span>{f}</div>)}<button onClick={()=>assinar(p.id)} disabled={loadingPlano===p.id} style={{width:"100%",padding:"11px 0",borderRadius:10,border:p.featured?"none":`1px solid ${C.borderLight}`,background:p.featured?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:p.featured?C.text:C.accentBright,fontWeight:700,fontSize:13,cursor:loadingPlano===p.id?"default":"pointer",marginTop:18,opacity:loadingPlano===p.id?0.7:1}}>{loadingPlano===p.id?"⏳ Aguarde...":p.featured?"💳 Assinar Agora":"Começar"}</button></div>))}</div><div style={{textAlign:"center",marginTop:24,fontSize:12,color:C.textMuted}}>💳 PIX · Cartão · Boleto · 🔒 Pagamento 100% seguro via Mercado Pago</div></div>);}
@@ -347,7 +509,7 @@ export default function App(){
   const isFullPage=page==="mapa"||page==="planos"||page==="admin"||page==="ia"||page==="consulta";
   const pageMap={
     dashboard:<Dashboard user={user} setPage={setPage}/>,
-    consulta:<ConsultaPage usarCredito={usarCredito} creditos={creditos} onSemCreditos={()=>setShowSemCreditos(true)} setPage={setPage}/>,
+    consulta:<ConsultaPage user={user} usarCredito={usarCredito} creditos={creditos} onSemCreditos={()=>setShowSemCreditos(true)} setPage={setPage}/>,
     mapa:<MapaPage/>,
     ia:<IAPage usarCredito={usarCredito} creditos={creditos} onSemCreditos={()=>setShowSemCreditos(true)}/>,
     embargos:<PlaceholderPage icon="⛔" title="Embargos IBAMA" desc="Consulta em tempo real de embargos ambientais ativos no IBAMA."/>,
