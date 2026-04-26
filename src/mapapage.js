@@ -21,13 +21,14 @@ const CAMADAS = [
   { id:"relevo",  label:"Relevo/Topografia", icon:"🏔️", color:"#a78bfa", ativa:false },
 ];
 
+// ── ORDEM CORRIGIDA: CAR → ITR → CCIR → GPS → Fazenda → Proprietário ──
 const TIPOS_BUSCA = [
   { id:"car",          label:"CAR",          icon:"📋", placeholder:"Ex: MT-5107040-9B4D7A3E2F1C6B8A0D5E9F3C" },
-  { id:"gps",          label:"GPS",          icon:"📍", placeholder:"Ex: -11.8456, -55.1987" },
-  { id:"ccir",         label:"CCIR",         icon:"📄", placeholder:"Ex: 110.035.031.500-2" },
   { id:"itr",          label:"ITR",          icon:"💰", placeholder:"Ex: 12.345.678-9" },
-  { id:"proprietario", label:"Proprietário", icon:"👤", placeholder:"Ex: João da Silva" },
+  { id:"ccir",         label:"CCIR",         icon:"📄", placeholder:"Ex: 110.035.031.500-2" },
+  { id:"gps",          label:"GPS",          icon:"📍", placeholder:"Ex: -11.8456, -55.1987" },
   { id:"fazenda",      label:"Fazenda",      icon:"🌾", placeholder:"Ex: Fazenda Horizonte Verde" },
+  { id:"proprietario", label:"Proprietário", icon:"👤", placeholder:"Ex: João da Silva" },
 ];
 
 const FAZENDA_MOCK = {
@@ -199,7 +200,6 @@ export default function MapaPage() {
   };
 
   const desenharReal = (map, L, geometria, dados) => {
-    // Remove camadas anteriores (exceto tiles)
     Object.values(map._layers).forEach(layer => {
       if (layer._latlngs || layer._latlng) map.removeLayer(layer);
     });
@@ -221,7 +221,6 @@ export default function MapaPage() {
     map.fitBounds(bounds, { padding:[40,40] });
   };
 
-  // ── Importar KML e renderizar no mapa ──
   const importarKML = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -241,20 +240,16 @@ export default function MapaPage() {
     const L = window.L;
     const map = leafletMap.current;
 
-    // Remove KML anterior
     if (kmlLayerRef.current) {
       map.removeLayer(kmlLayerRef.current);
       kmlLayerRef.current = null;
     }
 
     try {
-      // Parse KML — extrai coordenadas dos Placemark/Polygon
       const parser = new DOMParser();
       const kmlDoc = parser.parseFromString(kmlText, "text/xml");
-
       const layers = [];
 
-      // Processa Polygons
       const polygons = kmlDoc.querySelectorAll("Polygon");
       polygons.forEach(poly => {
         const coordsEl = poly.querySelector("outerBoundaryIs coordinates, coordinates");
@@ -270,7 +265,6 @@ export default function MapaPage() {
         }
       });
 
-      // Processa LineStrings
       const lines = kmlDoc.querySelectorAll("LineString coordinates");
       lines.forEach(coordsEl => {
         const raw = coordsEl.textContent.trim().split(/\s+/);
@@ -284,7 +278,6 @@ export default function MapaPage() {
         }
       });
 
-      // Processa Points/Placemarks
       const points = kmlDoc.querySelectorAll("Point coordinates");
       points.forEach(coordsEl => {
         const parts = coordsEl.textContent.trim().split(",");
@@ -307,7 +300,6 @@ export default function MapaPage() {
       const group = L.layerGroup(layers).addTo(map);
       kmlLayerRef.current = group;
 
-      // Centraliza no KML
       const bounds = L.featureGroup(layers).getBounds();
       if (bounds.isValid()) map.fitBounds(bounds, { padding:[40,40] });
 
@@ -329,7 +321,7 @@ export default function MapaPage() {
         if (!gps) { setErroBusca("GPS inválido. Use: -11.8456, -55.1987"); setBuscando(false); return; }
         body = { lat:parseFloat(gps[1]), lng:parseFloat(gps[2]) };
       } else if (tipoBusca === "ccir") { body = { ccir: val };
-      } else if (tipoBusca === "itr") { body = { itr: val };
+      } else if (tipoBusca === "itr")  { body = { itr: val };
       } else if (tipoBusca === "proprietario") { body = { proprietario: val };
       } else if (tipoBusca === "fazenda") { body = { nomeFazenda: val };
       } else { body = { car: val }; }
@@ -475,8 +467,8 @@ export default function MapaPage() {
           <div style={{ fontSize:11, color:C.textMuted, marginBottom:10 }}>📍 {fazenda.municipio}</div>
           <InfoRow label="🌾 Área Total"      value={fazenda.area} />
           <InfoRow label="📋 CAR"             value={fazenda.car?.substring(0,18)+"..."} />
-          <InfoRow label="📄 CCIR"            value={fazenda.ccir} />
           <InfoRow label="💰 ITR/NIRF"        value={fazenda.itr} />
+          <InfoRow label="📄 CCIR"            value={fazenda.ccir} />
           <InfoRow label="👤 Proprietário"    value={fazenda.proprietario?.substring(0,22)+"..."} />
           <InfoRow label="📐 Módulos Fiscais" value={fazenda.modulos} />
           <InfoRow label="🗂️ SIGEF"           value={fazenda.sigef} />
