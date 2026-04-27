@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 const C = {
   bg:"#0a0f0a", surface:"#0f1a0f", card:"#111d11",
@@ -21,7 +23,6 @@ const CAMADAS = [
   { id:"relevo",  label:"Relevo/Topografia", icon:"🏔️", color:"#a78bfa", ativa:false },
 ];
 
-// ── ORDEM CORRIGIDA: CAR → ITR → CCIR → GPS → Fazenda → Proprietário ──
 const TIPOS_BUSCA = [
   { id:"car",          label:"CAR",          icon:"📋", placeholder:"Ex: MT-5107040-9B4D7A3E2F1C6B8A0D5E9F3C" },
   { id:"itr",          label:"ITR",          icon:"💰", placeholder:"Ex: 12.345.678-9" },
@@ -50,6 +51,314 @@ const InfoRow = ({ label, value }) => (
     <span style={{ fontWeight:600,color:C.text,textAlign:"right",maxWidth:140 }}>{value ?? "—"}</span>
   </div>
 );
+
+// ─── LAUDO PDF ────────────────────────────────────────────────────
+
+const gerarNumeroLaudo = () => {
+  const ano = new Date().getFullYear();
+  const seq = String(Math.floor(Math.random()*99999)).padStart(5,"0");
+  return `AGM-${ano}-${seq}`;
+};
+
+const dataHoje = () =>
+  new Date().toLocaleDateString("pt-BR",{ day:"2-digit", month:"long", year:"numeric" });
+
+function LaudoVisual({ fazenda, dadosReais, numeroLaudo }) {
+  const score    = dadosReais?.score;
+  const clima    = dadosReais?.clima;
+  const nasa     = dadosReais?.nasa;
+  const cotacoes = dadosReais?.cotacoes;
+  const ibama    = dadosReais?.ibama;
+  const prodes   = dadosReais?.prodes;
+
+  const scoreValor = score?.valor ?? 78;
+  const scoreNivel = score?.nivel  ?? "Baixo Risco";
+  const scoreCor   = !score ? "#22c55e" : scoreValor>=75 ? "#22c55e" : scoreValor>=50 ? "#fbbf24" : "#ef4444";
+
+  const SH = ({ icon, title, color="#16a34a" }) => (
+    <div style={{ display:"flex",alignItems:"center",gap:10,background:`linear-gradient(90deg,${color}18,transparent)`,borderLeft:`4px solid ${color}`,padding:"8px 14px",marginBottom:12,borderRadius:"0 8px 8px 0" }}>
+      <span style={{ fontSize:16 }}>{icon}</span>
+      <span style={{ fontSize:13,fontWeight:800,color,letterSpacing:0.5 }}>{title}</span>
+    </div>
+  );
+
+  const Row2 = ({ label, value, color }) => (
+    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}>
+      <span style={{ color:"#6b7280" }}>{label}</span>
+      <span style={{ fontWeight:700,color:color||"#1a2e1a",maxWidth:200,textAlign:"right" }}>{value ?? "—"}</span>
+    </div>
+  );
+
+  const Badge = ({ ok, textoOk, textoNok }) => (
+    <span style={{ display:"inline-flex",alignItems:"center",gap:5,padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:700,background:ok?"#dcfce7":"#fee2e2",color:ok?"#16a34a":"#dc2626",border:`1px solid ${ok?"#86efac":"#fca5a5"}` }}>
+      {ok?"✅":"⛔"} {ok?textoOk:textoNok}
+    </span>
+  );
+
+  return (
+    <div id="laudo-conteudo" style={{ width:794,background:"#ffffff",fontFamily:"Georgia,serif",color:"#1a2e1a" }}>
+
+      {/* CABEÇALHO */}
+      <div style={{ background:"linear-gradient(135deg,#0d5c2e 0%,#12803f 50%,#16a34a 100%)",padding:"36px 40px 28px",color:"white" }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
+          <div>
+            <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom:6 }}>
+              <div style={{ width:44,height:44,borderRadius:12,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24 }}>🌿</div>
+              <div>
+                <div style={{ fontSize:22,fontWeight:900,letterSpacing:1 }}>AgroMind</div>
+                <div style={{ fontSize:10,opacity:0.8,letterSpacing:2,textTransform:"uppercase" }}>Inteligência Rural</div>
+              </div>
+            </div>
+            <div style={{ fontSize:18,fontWeight:700,marginTop:16,marginBottom:4 }}>Laudo de Análise Rural</div>
+            <div style={{ fontSize:12,opacity:0.85 }}>{fazenda.nome}</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ background:"rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 16px" }}>
+              <div style={{ fontSize:10,opacity:0.8,marginBottom:2 }}>Nº DO LAUDO</div>
+              <div style={{ fontSize:14,fontWeight:900,letterSpacing:1 }}>{numeroLaudo}</div>
+              <div style={{ fontSize:10,opacity:0.8,marginTop:6 }}>{dataHoje()}</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"flex",gap:12,marginTop:24,background:"rgba(0,0,0,0.2)",borderRadius:10,padding:"12px 16px" }}>
+          {[["📍",fazenda.municipio||"—","Localização"],["🌾",fazenda.area||"—","Área Total"],["📋",(fazenda.car||"").substring(0,14)+"…","CAR"],["🤖",`${scoreValor}/100`,"Score IA"]].map(([icon,val,label])=>(
+            <div key={label} style={{ flex:1,textAlign:"center" }}>
+              <div style={{ fontSize:18 }}>{icon}</div>
+              <div style={{ fontSize:12,fontWeight:800,marginTop:2 }}>{val}</div>
+              <div style={{ fontSize:9,opacity:0.7,textTransform:"uppercase",letterSpacing:0.5 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CORPO */}
+      <div style={{ padding:"28px 40px",display:"flex",flexDirection:"column",gap:24 }}>
+
+        {/* 1. IDENTIFICAÇÃO */}
+        <div>
+          <SH icon="📋" title="1. IDENTIFICAÇÃO DO IMÓVEL" color="#16a34a" />
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 24px" }}>
+            <div>
+              <Row2 label="Nome da Fazenda" value={fazenda.nome} />
+              <Row2 label="Município / UF"  value={fazenda.municipio} />
+              <Row2 label="Área Total"      value={fazenda.area} />
+              <Row2 label="Módulos Fiscais" value={fazenda.modulos} />
+              <Row2 label="APP"             value={fazenda.app} />
+            </div>
+            <div>
+              <Row2 label="Proprietário"   value={fazenda.proprietario} />
+              <Row2 label="CAR"            value={fazenda.car} />
+              <Row2 label="CCIR"           value={fazenda.ccir} />
+              <Row2 label="ITR / NIRF"     value={fazenda.itr} />
+              <Row2 label="Reserva Legal"  value={fazenda.rl} />
+            </div>
+          </div>
+          <div style={{ marginTop:10 }}>
+            <Row2 label="SIGEF / INCRA" value={fazenda.sigef} />
+            <Row2 label="Latitude"      value={`${fazenda.coordenadas?.lat}°`} />
+            <Row2 label="Longitude"     value={`${fazenda.coordenadas?.lng}°`} />
+          </div>
+        </div>
+
+        {/* 2. SCORE IA */}
+        <div>
+          <SH icon="🤖" title="2. SCORE IA — ANÁLISE DE RISCO" color="#22c55e" />
+          <div style={{ display:"flex",gap:20,alignItems:"flex-start" }}>
+            <div style={{ textAlign:"center",flexShrink:0 }}>
+              <div style={{ width:90,height:90,borderRadius:"50%",background:`conic-gradient(${scoreCor} 0deg,${scoreCor} ${(scoreValor/100)*360}deg,#e5e7eb ${(scoreValor/100)*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px",boxShadow:`0 4px 16px ${scoreCor}40` }}>
+                <div style={{ width:68,height:68,borderRadius:"50%",background:"white",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center" }}>
+                  <div style={{ fontSize:24,fontWeight:900,color:scoreCor,lineHeight:1 }}>{scoreValor}</div>
+                  <div style={{ fontSize:9,color:"#9ca3af" }}>/100</div>
+                </div>
+              </div>
+              <div style={{ fontSize:12,fontWeight:800,color:scoreCor }}>{scoreNivel}</div>
+            </div>
+            <div style={{ flex:1 }}>
+              {score?.fatores?.length>0
+                ? score.fatores.map((f,i)=>(
+                    <div key={i} style={{ display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}>
+                      <span style={{ color:"#6b7280" }}>{f.label}</span>
+                      <span style={{ fontWeight:700,color:f.cor }}>{f.impacto===0?"✅ OK":f.impacto}</span>
+                    </div>
+                  ))
+                : <div style={{ fontSize:11,color:"#6b7280",fontStyle:"italic",marginTop:8 }}>Realize uma consulta real para visualizar os fatores detalhados do Score IA.</div>
+              }
+              {score?.analise&&(
+                <div style={{ marginTop:10,padding:"8px 12px",background:`${scoreCor}10`,border:`1px solid ${scoreCor}30`,borderRadius:8,fontSize:11,color:"#374151",lineHeight:1.6 }}>{score.analise}</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 3. IBAMA */}
+        <div>
+          <SH icon="⛔" title="3. EMBARGOS IBAMA" color="#ef4444" />
+          <div style={{ marginBottom:10 }}>
+            <Badge ok={!fazenda.embargo} textoOk="Sem Embargo Ativo" textoNok="Embargo IBAMA Ativo" />
+          </div>
+          {ibama?.embargos?.length>0
+            ? ibama.embargos.map((e,i)=>(
+                <div key={i} style={{ padding:"8px 12px",marginBottom:6,background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:8,fontSize:11 }}>
+                  <div style={{ fontWeight:700,color:"#dc2626",marginBottom:3 }}>⛔ Embargo #{e.numTermo||i+1}</div>
+                  <div style={{ color:"#6b7280" }}>Área: {e.area||"—"} ha · Data: {e.dataEmbargo||"—"}</div>
+                  <div style={{ color:"#6b7280" }}>Motivo: {e.descricao||"—"}</div>
+                </div>
+              ))
+            : <div style={{ padding:"10px 14px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,fontSize:11,color:"#166534" }}>✅ Nenhum embargo encontrado na base IBAMA para este imóvel.</div>
+          }
+        </div>
+
+        {/* 4. PRODES */}
+        <div>
+          <SH icon="📡" title="4. PRODES / INPE — DESMATAMENTO" color="#f97316" />
+          <div style={{ marginBottom:10 }}>
+            <Badge ok={!fazenda.prodes} textoOk="Sem Alerta PRODES" textoNok="Alerta PRODES Ativo" />
+          </div>
+          {prodes?.alertas?.length>0
+            ? prodes.alertas.map((a,i)=>(
+                <div key={i} style={{ padding:"8px 12px",marginBottom:6,background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,fontSize:11 }}>
+                  <div style={{ fontWeight:700,color:"#ea580c",marginBottom:3 }}>🔴 Alerta #{i+1}</div>
+                  <div style={{ color:"#6b7280" }}>Área: {a.areaha||"—"} ha · Ano: {a.year||"—"}</div>
+                  <div style={{ color:"#6b7280" }}>Classe: {a.classname||"—"}</div>
+                </div>
+              ))
+            : <div style={{ padding:"10px 14px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,fontSize:11,color:"#166534" }}>✅ Nenhum alerta de desmatamento PRODES encontrado para este imóvel.</div>
+          }
+        </div>
+
+        {/* 5. CLIMA + NASA */}
+        {(clima?.encontrado||nasa?.encontrado)&&(
+          <div>
+            <SH icon="🌤️" title="5. CLIMA & DADOS NASA POWER" color="#3b82f6" />
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:16 }}>
+              {clima?.encontrado&&(
+                <div>
+                  <div style={{ fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:8 }}>🌤️ Clima Atual</div>
+                  {[["🌡️ Temperatura",`${clima.atual?.temperatura??"—"}°C`],["💧 Umidade",`${clima.atual?.umidade??"—"}%`],["💨 Vento",`${clima.atual?.vento??"—"} km/h`],["🌧️ Precipitação",`${clima.atual?.precipitacao??0} mm`],["📅 Chuva 30 dias",`${clima.precipTotal30d??"—"} mm`],["📝 Condição",clima.atual?.descricao??"—"]].map(([l,v])=>(
+                    <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}>
+                      <span style={{ color:"#6b7280" }}>{l}</span>
+                      <span style={{ fontWeight:700,color:"#3b82f6" }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {nasa?.encontrado&&(
+                <div>
+                  <div style={{ fontSize:11,fontWeight:700,color:"#a78bfa",marginBottom:8 }}>🛰️ Solo & Radiação — NASA POWER</div>
+                  {[["☀️ Radiação Solar",nasa.radiacaoSolar?`${nasa.radiacaoSolar} MJ/m²`:"—"],["🌡️ Temp. Média",nasa.temperaturaMedia?`${nasa.temperaturaMedia}°C`:"—"],["🌧️ Precip. Média",nasa.precipitacaoMedia?`${nasa.precipitacaoMedia} mm/d`:"—"],["💧 Umid. Relativa",nasa.umidadeRelativa?`${nasa.umidadeRelativa}%`:"—"]].map(([l,v])=>(
+                    <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}>
+                      <span style={{ color:"#6b7280" }}>{l}</span>
+                      <span style={{ fontWeight:700,color:"#a78bfa" }}>{v}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize:9,color:"#9ca3af",marginTop:6,textAlign:"center" }}>Média 7 dias · Fonte: NASA POWER</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 6. COTAÇÕES */}
+        {cotacoes?.encontrado&&(
+          <div>
+            <SH icon="📊" title="6. COTAÇÕES CEPEA" color="#fbbf24" />
+            {cotacoes.dolarHoje&&(
+              <div style={{ fontSize:11,color:"#6b7280",marginBottom:8 }}>
+                💵 Dólar hoje: <strong style={{ color:"#f59e0b" }}>R$ {Number(cotacoes.dolarHoje).toFixed(2)}</strong> · Ref: {cotacoes.atualizadoEm}
+              </div>
+            )}
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8 }}>
+              {Object.entries(cotacoes.produtos||{}).map(([k,v])=>(
+                <div key={k} style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 10px" }}>
+                  <div style={{ fontSize:11,fontWeight:700,color:"#1a2e1a",marginBottom:2 }}>{v.nome}</div>
+                  <div style={{ fontSize:13,fontWeight:900,color:"#d97706" }}>{v.preco?`R$ ${Number(v.preco).toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—"}</div>
+                  <div style={{ fontSize:10,color:"#6b7280" }}>{v.unidade}</div>
+                  {v.variacao!=null&&<div style={{ fontSize:10,color:v.variacao>=0?"#16a34a":"#dc2626",fontWeight:700 }}>{v.variacao>=0?"▲":"▼"} {Math.abs(v.variacao).toFixed(1)}%</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 7. LOCALIZAÇÃO */}
+        <div>
+          <SH icon="🗺️" title="7. LOCALIZAÇÃO GEOGRÁFICA" color="#16a34a" />
+          <div style={{ height:180,background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"2px dashed #86efac",borderRadius:12,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#166534" }}>
+            <div style={{ fontSize:36,marginBottom:8 }}>🗺️</div>
+            <div style={{ fontSize:12,fontWeight:700 }}>Mapa da Propriedade</div>
+            <div style={{ fontSize:10,color:"#4ade80",marginTop:4 }}>📍 {fazenda.coordenadas?.lat}°, {fazenda.coordenadas?.lng}°</div>
+            <div style={{ fontSize:10,color:"#6b7280",marginTop:8 }}>Acesse o mapa interativo em agromind-fawn.vercel.app</div>
+          </div>
+        </div>
+
+        {/* DECLARAÇÃO */}
+        <div style={{ background:"#f8fdf8",border:"1px solid #86efac",borderRadius:10,padding:"14px 18px",fontSize:10,color:"#374151",lineHeight:1.7 }}>
+          <div style={{ fontWeight:700,color:"#166534",marginBottom:6,fontSize:11 }}>📋 Declaração</div>
+          Este laudo foi gerado automaticamente pela plataforma AgroMind com base em dados públicos oficiais (SICAR/CAR, IBAMA, PRODES/INPE, SIGEF/INCRA, Open-Meteo, NASA POWER, CEPEA). As informações são de caráter informativo e não substituem análise técnica por engenheiro agrônomo ou ambiental habilitado. Data de geração: {dataHoje()}.
+        </div>
+      </div>
+
+      {/* RODAPÉ */}
+      <div style={{ background:"linear-gradient(135deg,#0d5c2e,#16a34a)",padding:"14px 40px",display:"flex",justifyContent:"space-between",alignItems:"center",color:"rgba(255,255,255,0.85)" }}>
+        <div style={{ fontSize:11 }}>🌿 <strong>AgroMind</strong> — Inteligência Rural Brasileira</div>
+        <div style={{ fontSize:10 }}>{numeroLaudo} · agromind-fawn.vercel.app</div>
+        <div style={{ fontSize:10 }}>{dataHoje()}</div>
+      </div>
+    </div>
+  );
+}
+
+async function gerarLaudoPDF(fazenda, dadosReais, setGerando) {
+  setGerando(true);
+  try {
+    const numeroLaudo = gerarNumeroLaudo();
+
+    const container = document.createElement("div");
+    container.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;background:#ffffff;z-index:-1;";
+    document.body.appendChild(container);
+
+    const { createRoot } = await import("react-dom/client");
+    const root = createRoot(container);
+
+    await new Promise(resolve => {
+      root.render(<LaudoVisual fazenda={fazenda} dadosReais={dadosReais} numeroLaudo={numeroLaudo} />);
+      setTimeout(resolve, 600);
+    });
+
+    const elemento = container.querySelector("#laudo-conteudo");
+    if (!elemento) throw new Error("Elemento do laudo não encontrado");
+
+    const canvas = await html2canvas(elemento, { scale:2, useCORS:true, backgroundColor:"#ffffff", logging:false });
+
+    const pdf = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+    const larguraMM  = 210;
+    const alturaMM   = 297;
+    const ratio      = larguraMM / canvas.width;
+    const totalAltMM = canvas.height * ratio;
+
+    let posY = 0, pagina = 0;
+    while (posY < totalAltMM) {
+      if (pagina > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, -posY, larguraMM, totalAltMM);
+      posY += alturaMM;
+      pagina++;
+    }
+
+    const nomeArquivo = `Laudo_${(fazenda.nome||"Imovel").replace(/\s+/g,"_")}_${numeroLaudo}.pdf`;
+    pdf.save(nomeArquivo);
+
+    root.unmount();
+    document.body.removeChild(container);
+    alert(`✅ Laudo gerado com sucesso!\n📄 ${nomeArquivo}`);
+  } catch (err) {
+    console.error("Erro ao gerar PDF:", err);
+    alert(`❌ Erro ao gerar laudo: ${err.message}`);
+  } finally {
+    setGerando(false);
+  }
+}
+
+// ─── CARDS ───────────────────────────────────────────────────────
 
 function CardClima({ clima }) {
   if (!clima?.encontrado) return null;
@@ -151,6 +460,8 @@ function CardScore({ score }) {
   );
 }
 
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────
+
 export default function MapaPage() {
   const mapRef      = useRef(null);
   const leafletMap  = useRef(null);
@@ -164,6 +475,7 @@ export default function MapaPage() {
   const [searchVal,  setSearchVal]  = useState("");
   const [buscando,   setBuscando]   = useState(false);
   const [erroBusca,  setErroBusca]  = useState(null);
+  const [gerandoPDF, setGerandoPDF] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -227,10 +539,8 @@ export default function MapaPage() {
     setKmlNome(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try {
-        const kmlText = ev.target.result;
-        renderizarKML(kmlText, file.name);
-      } catch { alert("Erro ao ler KML."); }
+      try { renderizarKML(ev.target.result, file.name); }
+      catch { alert("Erro ao ler KML."); }
     };
     reader.readAsText(file);
   };
@@ -239,94 +549,54 @@ export default function MapaPage() {
     if (!leafletMap.current || !window.L) return;
     const L = window.L;
     const map = leafletMap.current;
-
-    if (kmlLayerRef.current) {
-      map.removeLayer(kmlLayerRef.current);
-      kmlLayerRef.current = null;
-    }
-
+    if (kmlLayerRef.current) { map.removeLayer(kmlLayerRef.current); kmlLayerRef.current = null; }
     try {
       const parser = new DOMParser();
       const kmlDoc = parser.parseFromString(kmlText, "text/xml");
       const layers = [];
-
-      const polygons = kmlDoc.querySelectorAll("Polygon");
-      polygons.forEach(poly => {
+      kmlDoc.querySelectorAll("Polygon").forEach(poly => {
         const coordsEl = poly.querySelector("outerBoundaryIs coordinates, coordinates");
         if (!coordsEl) return;
-        const raw = coordsEl.textContent.trim().split(/\s+/);
-        const latlngs = raw.map(c => {
-          const parts = c.split(",");
-          if (parts.length < 2) return null;
-          return [parseFloat(parts[1]), parseFloat(parts[0])];
-        }).filter(Boolean);
-        if (latlngs.length > 0) {
-          layers.push(L.polygon(latlngs, { color:"#22c55e", weight:3, fillColor:"#22c55e", fillOpacity:0.2 }));
-        }
+        const latlngs = coordsEl.textContent.trim().split(/\s+/).map(c => { const p=c.split(","); return p.length<2?null:[parseFloat(p[1]),parseFloat(p[0])]; }).filter(Boolean);
+        if (latlngs.length>0) layers.push(L.polygon(latlngs,{color:"#22c55e",weight:3,fillColor:"#22c55e",fillOpacity:0.2}));
       });
-
-      const lines = kmlDoc.querySelectorAll("LineString coordinates");
-      lines.forEach(coordsEl => {
-        const raw = coordsEl.textContent.trim().split(/\s+/);
-        const latlngs = raw.map(c => {
-          const parts = c.split(",");
-          if (parts.length < 2) return null;
-          return [parseFloat(parts[1]), parseFloat(parts[0])];
-        }).filter(Boolean);
-        if (latlngs.length > 0) {
-          layers.push(L.polyline(latlngs, { color:"#22c55e", weight:3 }));
-        }
+      kmlDoc.querySelectorAll("LineString coordinates").forEach(coordsEl => {
+        const latlngs = coordsEl.textContent.trim().split(/\s+/).map(c => { const p=c.split(","); return p.length<2?null:[parseFloat(p[1]),parseFloat(p[0])]; }).filter(Boolean);
+        if (latlngs.length>0) layers.push(L.polyline(latlngs,{color:"#22c55e",weight:3}));
       });
-
-      const points = kmlDoc.querySelectorAll("Point coordinates");
-      points.forEach(coordsEl => {
+      kmlDoc.querySelectorAll("Point coordinates").forEach(coordsEl => {
         const parts = coordsEl.textContent.trim().split(",");
-        if (parts.length >= 2) {
-          const lat = parseFloat(parts[1]);
-          const lng = parseFloat(parts[0]);
-          const icon = L.divIcon({
-            html:`<div style="background:linear-gradient(135deg,#12803f,#22c55e);width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
-            iconSize:[28,28], iconAnchor:[14,28], className:"",
-          });
-          layers.push(L.marker([lat, lng], { icon }));
+        if (parts.length>=2) {
+          const icon = L.divIcon({ html:`<div style="background:linear-gradient(135deg,#12803f,#22c55e);width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`, iconSize:[28,28], iconAnchor:[14,28], className:"" });
+          layers.push(L.marker([parseFloat(parts[1]),parseFloat(parts[0])],{icon}));
         }
       });
-
-      if (layers.length === 0) {
-        alert("⚠️ KML importado mas nenhuma geometria encontrada.");
-        return;
-      }
-
+      if (layers.length===0) { alert("⚠️ KML importado mas nenhuma geometria encontrada."); return; }
       const group = L.layerGroup(layers).addTo(map);
       kmlLayerRef.current = group;
-
       const bounds = L.featureGroup(layers).getBounds();
-      if (bounds.isValid()) map.fitBounds(bounds, { padding:[40,40] });
-
+      if (bounds.isValid()) map.fitBounds(bounds,{padding:[40,40]});
       alert(`✅ KML "${nomeArquivo}" carregado com ${layers.length} elemento(s) no mapa!`);
-    } catch (err) {
-      alert(`❌ Erro ao processar KML: ${err.message}`);
-    }
+    } catch (err) { alert(`❌ Erro ao processar KML: ${err.message}`); }
   };
 
   const buscarImovel = async () => {
     const val = searchVal.trim();
     if (!val || buscando) return;
-    setBuscando(true);
-    setErroBusca(null);
+    setBuscando(true); setErroBusca(null);
     try {
       let body = {};
-      if (tipoBusca === "gps") {
+      if (tipoBusca==="gps") {
         const gps = val.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
         if (!gps) { setErroBusca("GPS inválido. Use: -11.8456, -55.1987"); setBuscando(false); return; }
         body = { lat:parseFloat(gps[1]), lng:parseFloat(gps[2]) };
-      } else if (tipoBusca === "ccir") { body = { ccir: val };
-      } else if (tipoBusca === "itr")  { body = { itr: val };
-      } else if (tipoBusca === "proprietario") { body = { proprietario: val };
-      } else if (tipoBusca === "fazenda") { body = { nomeFazenda: val };
-      } else { body = { car: val }; }
+      } else if (tipoBusca==="ccir")         { body = { ccir:val };
+      } else if (tipoBusca==="itr")           { body = { itr:val };
+      } else if (tipoBusca==="proprietario")  { body = { proprietario:val };
+      } else if (tipoBusca==="fazenda")       { body = { nomeFazenda:val };
+      } else                                  { body = { car:val }; }
 
-      const resp = await fetch("/api/consulta", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+      const resp  = await fetch("/api/consulta", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
       const dados = await resp.json();
       if (!dados.sucesso) { setErroBusca(dados.error||"Erro na consulta."); setBuscando(false); return; }
       setDadosReais(dados);
@@ -334,19 +604,19 @@ export default function MapaPage() {
       if (dados.sicar?.encontrado) {
         setFazenda(prev=>({
           ...prev,
-          nome: dados.sicar.nome || prev.nome,
-          municipio: `${dados.sicar.municipio||""}, ${dados.sicar.uf||""}`,
-          area: dados.sicar.area || prev.area,
-          app: dados.sicar.app || prev.app,
-          rl: dados.sicar.rl || prev.rl,
-          proprietario: dados.sicar.proprietario || prev.proprietario,
-          modulos: dados.sicar.modulos || prev.modulos,
-          sigef: dados.sigef?.situacaoLabel || prev.sigef,
-          ccir: dados.sigef?.ccir || dados.sicar?.ccir || prev.ccir,
-          itr: dados.sicar?.nirf ? `NIRF: ${dados.sicar.nirf}` : prev.itr,
-          embargo: dados.ibama?.temEmbargo || false,
-          prodes: dados.prodes?.temAlerta || false,
-          coordenadas: dados.coordenadas?.lat ? dados.coordenadas : prev.coordenadas,
+          nome:         dados.sicar.nome       || prev.nome,
+          municipio:    `${dados.sicar.municipio||""}, ${dados.sicar.uf||""}`,
+          area:         dados.sicar.area        || prev.area,
+          app:          dados.sicar.app         || prev.app,
+          rl:           dados.sicar.rl          || prev.rl,
+          proprietario: dados.sicar.proprietario|| prev.proprietario,
+          modulos:      dados.sicar.modulos     || prev.modulos,
+          sigef:        dados.sigef?.situacaoLabel || prev.sigef,
+          ccir:         dados.sigef?.ccir || dados.sicar?.ccir || prev.ccir,
+          itr:          dados.sicar?.nirf ? `NIRF: ${dados.sicar.nirf}` : prev.itr,
+          embargo:      dados.ibama?.temEmbargo  || false,
+          prodes:       dados.prodes?.temAlerta  || false,
+          coordenadas:  dados.coordenadas?.lat ? dados.coordenadas : prev.coordenadas,
         }));
       }
 
@@ -379,27 +649,27 @@ export default function MapaPage() {
 
   const toggleCamada = (id) => setCamadas(prev=>prev.map(c=>c.id===id?{...c,ativa:!c.ativa}:c));
 
-  const score     = dadosReais?.score;
-  const clima     = dadosReais?.clima;
-  const nasa      = dadosReais?.nasa;
-  const cotacoes  = dadosReais?.cotacoes;
+  const score      = dadosReais?.score;
+  const clima      = dadosReais?.clima;
+  const nasa       = dadosReais?.nasa;
+  const cotacoes   = dadosReais?.cotacoes;
   const scoreValor = score?.valor ?? 78;
   const scoreCor   = score?.cor   ?? C.accent;
   const tipoAtual  = TIPOS_BUSCA.find(t=>t.id===tipoBusca);
 
   const PainelMobileInfo = () => (
-    <div className="mapa-mobile-info" style={{ display:"none", flexDirection:"column", gap:10, padding:14, borderTop:`1px solid ${C.border}`, background:C.surface }}>
-      <div style={{ display:"flex", gap:10 }}>
-        <div style={{ flex:1, background:C.card, border:`1px solid ${scoreCor}30`, borderRadius:14, padding:14, textAlign:"center" }}>
-          <div style={{ fontSize:11, color:C.textMuted, marginBottom:6 }}>🤖 Score IA</div>
-          <div style={{ fontSize:36, fontWeight:900, color:scoreCor, lineHeight:1 }}>{scoreValor}</div>
-          <div style={{ fontSize:10, color:C.textMuted }}>/100</div>
-          <div style={{ fontSize:11, color:scoreCor, marginTop:6, fontWeight:700 }}>{score?.nivel ?? "Baixo Risco"}</div>
+    <div className="mapa-mobile-info" style={{ display:"none",flexDirection:"column",gap:10,padding:14,borderTop:`1px solid ${C.border}`,background:C.surface }}>
+      <div style={{ display:"flex",gap:10 }}>
+        <div style={{ flex:1,background:C.card,border:`1px solid ${scoreCor}30`,borderRadius:14,padding:14,textAlign:"center" }}>
+          <div style={{ fontSize:11,color:C.textMuted,marginBottom:6 }}>🤖 Score IA</div>
+          <div style={{ fontSize:36,fontWeight:900,color:scoreCor,lineHeight:1 }}>{scoreValor}</div>
+          <div style={{ fontSize:10,color:C.textMuted }}>/100</div>
+          <div style={{ fontSize:11,color:scoreCor,marginTop:6,fontWeight:700 }}>{score?.nivel??"Baixo Risco"}</div>
         </div>
-        <div style={{ flex:1, background:C.card, border:`1px solid ${C.accent}30`, borderRadius:14, padding:14 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:C.accent, marginBottom:8 }}>{dadosReais?"📡 Status Real":"✅ Status Ambiental"}</div>
-          {[[fazenda.embargo?"⛔":"✅", fazenda.embargo?"Embargo IBAMA":"Sem embargo IBAMA"],[fazenda.prodes?"🔴":"📡",fazenda.prodes?"Alerta PRODES":"Sem alerta PRODES"],["🌱",dadosReais?"Dados verificados":"Moratória: Conforme"]].map(([icon,txt])=>(
-            <div key={txt} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:5, fontSize:11 }}>
+        <div style={{ flex:1,background:C.card,border:`1px solid ${C.accent}30`,borderRadius:14,padding:14 }}>
+          <div style={{ fontSize:11,fontWeight:700,color:C.accent,marginBottom:8 }}>{dadosReais?"📡 Status Real":"✅ Status Ambiental"}</div>
+          {[[fazenda.embargo?"⛔":"✅",fazenda.embargo?"Embargo IBAMA":"Sem embargo IBAMA"],[fazenda.prodes?"🔴":"📡",fazenda.prodes?"Alerta PRODES":"Sem alerta PRODES"],["🌱",dadosReais?"Dados verificados":"Moratória: Conforme"]].map(([icon,txt])=>(
+            <div key={txt} style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5,fontSize:11 }}>
               <span>{icon}</span><span style={{ color:C.textMuted }}>{txt}</span>
             </div>
           ))}
@@ -412,7 +682,7 @@ export default function MapaPage() {
   );
 
   return (
-    <div className="mapa-container" style={{ display:"flex", height:"calc(100vh - 64px)", overflow:"hidden" }}>
+    <div className="mapa-container" style={{ display:"flex",height:"calc(100vh - 64px)",overflow:"hidden" }}>
       <style>{`
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:768px){
@@ -429,27 +699,27 @@ export default function MapaPage() {
       `}</style>
 
       {/* ── PAINEL ESQUERDO ── */}
-      <div className="mapa-painel-esq" style={{ width:290, background:C.surface, borderRight:`1px solid ${C.border}`, display:"flex", flexDirection:"column", flexShrink:0, overflowY:"auto" }}>
+      <div className="mapa-painel-esq" style={{ width:290,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto" }}>
 
-        {/* Busca com chips */}
-        <div style={{ padding:14, borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:13, fontWeight:700, marginBottom:8 }}>🔍 Buscar Imóvel</div>
-          <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:8 }}>
+        {/* Busca */}
+        <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ fontSize:13,fontWeight:700,marginBottom:8 }}>🔍 Buscar Imóvel</div>
+          <div style={{ display:"flex",gap:5,flexWrap:"wrap",marginBottom:8 }}>
             {TIPOS_BUSCA.map(t=>(
-              <button key={t.id} onClick={()=>{setTipoBusca(t.id);setSearchVal("");}} style={{ padding:"4px 10px", borderRadius:20, border:`1px solid ${tipoBusca===t.id?C.accent:C.border}`, background:tipoBusca===t.id?`${C.accent}20`:"transparent", color:tipoBusca===t.id?C.accent:C.textMuted, fontSize:10, fontWeight:tipoBusca===t.id?700:400, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+              <button key={t.id} onClick={()=>{setTipoBusca(t.id);setSearchVal("");}} style={{ padding:"4px 10px",borderRadius:20,border:`1px solid ${tipoBusca===t.id?C.accent:C.border}`,background:tipoBusca===t.id?`${C.accent}20`:"transparent",color:tipoBusca===t.id?C.accent:C.textMuted,fontSize:10,fontWeight:tipoBusca===t.id?700:400,cursor:"pointer",display:"flex",alignItems:"center",gap:4 }}>
                 <span>{t.icon}</span>{t.label}
               </button>
             ))}
           </div>
-          <div style={{ display:"flex", gap:6 }}>
+          <div style={{ display:"flex",gap:6 }}>
             <input
-              style={{ flex:1, background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 10px", color:C.text, fontSize:12, outline:"none" }}
+              style={{ flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",color:C.text,fontSize:12,outline:"none" }}
               placeholder={tipoAtual?.placeholder||""}
               value={searchVal}
               onChange={e=>setSearchVal(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&buscarImovel()}
             />
-            <button onClick={buscarImovel} disabled={buscando} style={{ background:buscando?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`, border:"none", borderRadius:8, color:C.text, width:36, cursor:buscando?"default":"pointer", fontSize:14, flexShrink:0, opacity:buscando?0.7:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <button onClick={buscarImovel} disabled={buscando} style={{ background:buscando?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:8,color:C.text,width:36,cursor:buscando?"default":"pointer",fontSize:14,flexShrink:0,opacity:buscando?0.7:1,display:"flex",alignItems:"center",justifyContent:"center" }}>
               {buscando?<div style={{ width:14,height:14,border:`2px solid ${C.text}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite" }}/>:"🔍"}
             </button>
           </div>
@@ -458,13 +728,13 @@ export default function MapaPage() {
         </div>
 
         {/* Dados do imóvel */}
-        <div style={{ padding:14, borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-            <div style={{ fontSize:13, fontWeight:700 }}>📋 Dados do Imóvel</div>
+        <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
+            <div style={{ fontSize:13,fontWeight:700 }}>📋 Dados do Imóvel</div>
             {chip(dadosReais?"✓ Dados Reais":"Demo", dadosReais?C.accent:C.textMuted)}
           </div>
-          <div style={{ fontSize:13, fontWeight:800, color:C.accentBright, marginBottom:3 }}>{fazenda.nome}</div>
-          <div style={{ fontSize:11, color:C.textMuted, marginBottom:10 }}>📍 {fazenda.municipio}</div>
+          <div style={{ fontSize:13,fontWeight:800,color:C.accentBright,marginBottom:3 }}>{fazenda.nome}</div>
+          <div style={{ fontSize:11,color:C.textMuted,marginBottom:10 }}>📍 {fazenda.municipio}</div>
           <InfoRow label="🌾 Área Total"      value={fazenda.area} />
           <InfoRow label="📋 CAR"             value={fazenda.car?.substring(0,18)+"..."} />
           <InfoRow label="💰 ITR/NIRF"        value={fazenda.itr} />
@@ -474,104 +744,138 @@ export default function MapaPage() {
           <InfoRow label="🗂️ SIGEF"           value={fazenda.sigef} />
           <InfoRow label="💧 APP"             value={fazenda.app} />
           <InfoRow label="🌱 Reserva Legal"   value={fazenda.rl} />
-          <div style={{ marginTop:10, display:"flex", gap:6, flexWrap:"wrap" }}>
+          <div style={{ marginTop:10,display:"flex",gap:6,flexWrap:"wrap" }}>
             {chip(fazenda.embargo?"⛔ Embargo IBAMA":"✅ Sem Embargo", fazenda.embargo?C.red:C.accent)}
             {chip(fazenda.prodes?"🔴 Alerta PRODES":"📡 Sem PRODES", fazenda.prodes?C.orange:C.accent)}
           </div>
         </div>
 
         {/* Coordenadas */}
-        <div style={{ padding:14, borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:12, fontWeight:700, marginBottom:8 }}>📍 Coordenadas</div>
+        <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ fontSize:12,fontWeight:700,marginBottom:8 }}>📍 Coordenadas</div>
           <InfoRow label="Latitude"  value={`${fazenda.coordenadas.lat}°`} />
           <InfoRow label="Longitude" value={`${fazenda.coordenadas.lng}°`} />
-          <button onClick={()=>leafletMap.current?.setView([fazenda.coordenadas.lat,fazenda.coordenadas.lng],13)} style={{ marginTop:8, width:"100%", padding:"7px 0", borderRadius:8, background:`${C.green1}60`, border:`1px solid ${C.borderLight}`, color:C.accentBright, fontSize:11, fontWeight:600, cursor:"pointer" }}>
+          <button onClick={()=>leafletMap.current?.setView([fazenda.coordenadas.lat,fazenda.coordenadas.lng],13)} style={{ marginTop:8,width:"100%",padding:"7px 0",borderRadius:8,background:`${C.green1}60`,border:`1px solid ${C.borderLight}`,color:C.accentBright,fontSize:11,fontWeight:600,cursor:"pointer" }}>
             🎯 Centralizar no Mapa
           </button>
         </div>
 
-        {/* Cards desktop após busca */}
-        {clima    && <div style={{ padding:14, borderBottom:`1px solid ${C.border}` }}><CardClima clima={clima}/></div>}
-        {nasa     && <div style={{ padding:14, borderBottom:`1px solid ${C.border}` }}><CardNASA nasa={nasa}/></div>}
-        {cotacoes && <div style={{ padding:14, borderBottom:`1px solid ${C.border}` }}><CardCotacoes cotacoes={cotacoes}/></div>}
+        {/* Cards clima/nasa/cotações */}
+        {clima    && <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}><CardClima clima={clima}/></div>}
+        {nasa     && <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}><CardNASA nasa={nasa}/></div>}
+        {cotacoes && <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}><CardCotacoes cotacoes={cotacoes}/></div>}
 
-        {/* Ações */}
+        {/* ⚡ Ações */}
         <div style={{ padding:14 }}>
-          <div style={{ fontSize:12, fontWeight:700, marginBottom:10 }}>⚡ Ações</div>
+          <div style={{ fontSize:12,fontWeight:700,marginBottom:10 }}>⚡ Ações</div>
           <input type="file" accept=".kml,.kmz" ref={fileRef} style={{ display:"none" }} onChange={importarKML} />
-          {[
-            ["📥 Importar KML",    ()=>fileRef.current?.click(), C.blue],
-            ["📤 Exportar KML",    exportarKML,                  C.accent],
-            ["📄 Gerar Laudo PDF", ()=>alert("Em breve!"),       C.yellow],
-            ["💬 Enviar WhatsApp", ()=>alert("Em breve!"),       C.accentBright],
-          ].map(([l,fn,c])=>(
-            <button key={l} onClick={fn} style={{ display:"block", width:"100%", marginBottom:7, padding:"8px 12px", borderRadius:8, textAlign:"left", background:`${c}15`, border:`1px solid ${c}40`, color:c, fontWeight:600, fontSize:11.5, cursor:"pointer" }}>{l}</button>
-          ))}
-          {kmlNome&&<div style={{ fontSize:11, color:C.accent, marginTop:4 }}>✅ KML: {kmlNome}</div>}
+
+          {/* Importar KML */}
+          <button onClick={()=>fileRef.current?.click()} style={{ display:"block",width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:`${C.blue}15`,border:`1px solid ${C.blue}40`,color:C.blue,fontWeight:600,fontSize:11.5,cursor:"pointer" }}>
+            📥 Importar KML
+          </button>
+
+          {/* Exportar KML */}
+          <button onClick={exportarKML} style={{ display:"block",width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:`${C.accent}15`,border:`1px solid ${C.accent}40`,color:C.accent,fontWeight:600,fontSize:11.5,cursor:"pointer" }}>
+            📤 Exportar KML
+          </button>
+
+          {/* 📄 Gerar Laudo PDF — INTEGRADO */}
+          <button
+            onClick={()=>gerarLaudoPDF(fazenda, dadosReais, setGerandoPDF)}
+            disabled={gerandoPDF}
+            style={{ display:"flex",alignItems:"center",gap:8,width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:gerandoPDF?`${C.textDim}15`:`${C.yellow}15`,border:`1px solid ${gerandoPDF?C.textDim+"40":C.yellow+"40"}`,color:gerandoPDF?C.textDim:C.yellow,fontWeight:600,fontSize:11.5,cursor:gerandoPDF?"default":"pointer",opacity:gerandoPDF?0.7:1 }}
+          >
+            {gerandoPDF
+              ? <><div style={{ width:12,height:12,border:`2px solid ${C.textDim}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0 }}/> Gerando PDF...</>
+              : "📄 Gerar Laudo PDF"
+            }
+          </button>
+
+          {/* WhatsApp */}
+          <button onClick={()=>alert("Em breve!")} style={{ display:"block",width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:`${C.accentBright}15`,border:`1px solid ${C.accentBright}40`,color:C.accentBright,fontWeight:600,fontSize:11.5,cursor:"pointer" }}>
+            💬 Enviar WhatsApp
+          </button>
+
+          {kmlNome&&<div style={{ fontSize:11,color:C.accent,marginTop:4 }}>✅ KML: {kmlNome}</div>}
         </div>
       </div>
 
       {/* ── MAPA ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, overflow:"hidden" }}>
-        <div className="mapa-centro" style={{ flex:1, position:"relative", display:"flex", flexDirection:"column", minWidth:0 }}>
+      <div style={{ flex:1,display:"flex",flexDirection:"column",minWidth:0,overflow:"hidden" }}>
+        <div className="mapa-centro" style={{ flex:1,position:"relative",display:"flex",flexDirection:"column",minWidth:0 }}>
 
           {/* Toolbar */}
-          <div style={{ background:`${C.surface}f0`, backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}`, padding:"8px 14px", display:"flex", alignItems:"center", gap:8, flexShrink:0, flexWrap:"wrap" }}>
-            <div style={{ display:"flex", background:C.bg, border:`1px solid ${C.border}`, borderRadius:8, padding:3, gap:2 }}>
+          <div style={{ background:`${C.surface}f0`,backdropFilter:"blur(12px)",borderBottom:`1px solid ${C.border}`,padding:"8px 14px",display:"flex",alignItems:"center",gap:8,flexShrink:0,flexWrap:"wrap" }}>
+            <div style={{ display:"flex",background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:3,gap:2 }}>
               {[["satellite","🛰️ Satélite"],["mapa","🗺️ Mapa"],["terreno","🏔️ Terreno"]].map(([k,l])=>(
-                <button key={k} onClick={()=>trocarMapa(k)} style={{ padding:"5px 10px", borderRadius:6, border:"none", cursor:"pointer", fontSize:11, fontWeight:tipoMapa===k?700:400, background:tipoMapa===k?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent", color:tipoMapa===k?C.text:C.textMuted }}>{l}</button>
+                <button key={k} onClick={()=>trocarMapa(k)} style={{ padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:tipoMapa===k?700:400,background:tipoMapa===k?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:tipoMapa===k?C.text:C.textMuted }}>{l}</button>
               ))}
             </div>
-            <div className="mapa-toolbar-camadas" style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+            <div className="mapa-toolbar-camadas" style={{ display:"flex",gap:5,flexWrap:"wrap" }}>
               {camadas.slice(0,5).map(c=>(
-                <button key={c.id} onClick={()=>toggleCamada(c.id)} style={{ padding:"4px 9px", borderRadius:20, border:`1px solid ${c.ativa?c.color+"60":C.border}`, background:c.ativa?`${c.color}20`:"transparent", color:c.ativa?c.color:C.textDim, fontSize:11, cursor:"pointer" }}>{c.icon} {c.label}</button>
+                <button key={c.id} onClick={()=>toggleCamada(c.id)} style={{ padding:"4px 9px",borderRadius:20,border:`1px solid ${c.ativa?c.color+"60":C.border}`,background:c.ativa?`${c.color}20`:"transparent",color:c.ativa?c.color:C.textDim,fontSize:11,cursor:"pointer" }}>{c.icon} {c.label}</button>
               ))}
             </div>
-            <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
-              <button onClick={()=>fileRef.current?.click()} style={{ padding:"5px 10px", borderRadius:8, background:C.card, border:`1px solid ${C.border}`, color:C.accentBright, fontSize:11, fontWeight:600, cursor:"pointer" }}>📥 KML</button>
-              <button onClick={exportarKML} style={{ padding:"5px 10px", borderRadius:8, background:`linear-gradient(135deg,${C.green2},${C.green3})`, border:"none", color:C.text, fontSize:11, fontWeight:600, cursor:"pointer" }}>📤 Exportar</button>
+            <div style={{ marginLeft:"auto",display:"flex",gap:6 }}>
+              <button onClick={()=>fileRef.current?.click()} style={{ padding:"5px 10px",borderRadius:8,background:C.card,border:`1px solid ${C.border}`,color:C.accentBright,fontSize:11,fontWeight:600,cursor:"pointer" }}>📥 KML</button>
+              <button onClick={exportarKML} style={{ padding:"5px 10px",borderRadius:8,background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",color:C.text,fontSize:11,fontWeight:600,cursor:"pointer" }}>📤 Exportar</button>
             </div>
           </div>
 
-          {/* Mapa Leaflet */}
-          <div ref={mapRef} style={{ flex:1, background:`linear-gradient(135deg,${C.bg},#0d2010)` }} />
+          {/* Leaflet */}
+          <div ref={mapRef} style={{ flex:1,background:`linear-gradient(135deg,${C.bg},#0d2010)` }} />
 
           {/* Legenda */}
-          <div className="mapa-legenda" style={{ position:"absolute", bottom:40, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", zIndex:1000 }}>
-            <div style={{ fontSize:10, fontWeight:700, color:C.textMuted, marginBottom:6, textTransform:"uppercase" }}>Legenda</div>
+          <div className="mapa-legenda" style={{ position:"absolute",bottom:40,left:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 12px",zIndex:1000 }}>
+            <div style={{ fontSize:10,fontWeight:700,color:C.textMuted,marginBottom:6,textTransform:"uppercase" }}>Legenda</div>
             {camadas.filter(c=>c.ativa).map(c=>(
-              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:4, fontSize:11 }}>
-                <div style={{ width:16, height:4, borderRadius:2, background:c.color, flexShrink:0 }}/>
+              <div key={c.id} style={{ display:"flex",alignItems:"center",gap:7,marginBottom:4,fontSize:11 }}>
+                <div style={{ width:16,height:4,borderRadius:2,background:c.color,flexShrink:0 }}/>
                 <span style={{ color:C.textMuted }}>{c.label}</span>
               </div>
             ))}
-            {kmlNome&&<div style={{ marginTop:6, fontSize:10, color:C.blue }}>📥 {kmlNome}</div>}
+            {kmlNome&&<div style={{ marginTop:6,fontSize:10,color:C.blue }}>📥 {kmlNome}</div>}
           </div>
 
           {/* Score desktop */}
-          <div className="mapa-score" style={{ position:"absolute", top:70, right:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${scoreCor}40`, borderRadius:12, padding:"12px 14px", zIndex:1000, textAlign:"center", minWidth:110 }}>
-            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>🤖 Score IA</div>
-            <div style={{ fontSize:30, fontWeight:900, color:scoreCor, lineHeight:1 }}>{scoreValor}</div>
-            <div style={{ fontSize:10, color:C.textMuted }}>/100</div>
-            <div style={{ fontSize:10, color:scoreCor, marginTop:4, fontWeight:600 }}>{score?.nivel??"Baixo Risco"}</div>
+          <div className="mapa-score" style={{ position:"absolute",top:70,right:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${scoreCor}40`,borderRadius:12,padding:"12px 14px",zIndex:1000,textAlign:"center",minWidth:110 }}>
+            <div style={{ fontSize:11,color:C.textMuted,marginBottom:4 }}>🤖 Score IA</div>
+            <div style={{ fontSize:30,fontWeight:900,color:scoreCor,lineHeight:1 }}>{scoreValor}</div>
+            <div style={{ fontSize:10,color:C.textMuted }}>/100</div>
+            <div style={{ fontSize:10,color:scoreCor,marginTop:4,fontWeight:600 }}>{score?.nivel??"Baixo Risco"}</div>
           </div>
 
           {/* Status desktop */}
-          <div className="mapa-status" style={{ position:"absolute", top:70, left:16, background:`${C.surface}ee`, backdropFilter:"blur(12px)", border:`1px solid ${C.accent}40`, borderRadius:10, padding:"10px 12px", zIndex:1000 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:C.accent, marginBottom:4 }}>{dadosReais?"📡 Status Real":"✅ Status Ambiental"}</div>
-            <div style={{ fontSize:11, color:fazenda.embargo?C.red:C.textMuted }}>{fazenda.embargo?"⛔ Embargo IBAMA ativo":"⛔ Sem embargo IBAMA"}</div>
-            <div style={{ fontSize:11, color:fazenda.prodes?C.orange:C.textMuted }}>{fazenda.prodes?"🔴 Alerta PRODES ativo":"📡 Sem alerta PRODES"}</div>
-            <div style={{ fontSize:11, color:C.textMuted }}>🌱 Moratória: Conforme</div>
-            {dadosReais?.sigef?.certificado&&<div style={{ fontSize:11, color:C.accent }}>🗂️ SIGEF Certificado ✅</div>}
+          <div className="mapa-status" style={{ position:"absolute",top:70,left:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${C.accent}40`,borderRadius:10,padding:"10px 12px",zIndex:1000 }}>
+            <div style={{ fontSize:11,fontWeight:700,color:C.accent,marginBottom:4 }}>{dadosReais?"📡 Status Real":"✅ Status Ambiental"}</div>
+            <div style={{ fontSize:11,color:fazenda.embargo?C.red:C.textMuted }}>{fazenda.embargo?"⛔ Embargo IBAMA ativo":"⛔ Sem embargo IBAMA"}</div>
+            <div style={{ fontSize:11,color:fazenda.prodes?C.orange:C.textMuted }}>{fazenda.prodes?"🔴 Alerta PRODES ativo":"📡 Sem alerta PRODES"}</div>
+            <div style={{ fontSize:11,color:C.textMuted }}>🌱 Moratória: Conforme</div>
+            {dadosReais?.sigef?.certificado&&<div style={{ fontSize:11,color:C.accent }}>🗂️ SIGEF Certificado ✅</div>}
           </div>
 
           {/* Loading overlay */}
           {buscando&&(
-            <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000, backdropFilter:"blur(4px)" }}>
-              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"24px 32px", textAlign:"center" }}>
-                <div style={{ fontSize:36, marginBottom:10 }}>🔍</div>
-                <div style={{ fontSize:14, fontWeight:700, color:C.accentBright, marginBottom:4 }}>Consultando APIs...</div>
-                <div style={{ fontSize:12, color:C.textMuted }}>SICAR · IBAMA · PRODES · SIGEF · Clima · NASA</div>
+            <div style={{ position:"absolute",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,backdropFilter:"blur(4px)" }}>
+              <div style={{ background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"24px 32px",textAlign:"center" }}>
+                <div style={{ fontSize:36,marginBottom:10 }}>🔍</div>
+                <div style={{ fontSize:14,fontWeight:700,color:C.accentBright,marginBottom:4 }}>Consultando APIs...</div>
+                <div style={{ fontSize:12,color:C.textMuted }}>SICAR · IBAMA · PRODES · SIGEF · Clima · NASA</div>
+              </div>
+            </div>
+          )}
+
+          {/* Loading overlay PDF */}
+          {gerandoPDF&&(
+            <div style={{ position:"absolute",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,backdropFilter:"blur(4px)" }}>
+              <div style={{ background:C.card,border:`1px solid ${C.yellow}40`,borderRadius:16,padding:"28px 36px",textAlign:"center" }}>
+                <div style={{ fontSize:36,marginBottom:10 }}>📄</div>
+                <div style={{ fontSize:14,fontWeight:700,color:C.yellow,marginBottom:4 }}>Gerando Laudo PDF...</div>
+                <div style={{ fontSize:12,color:C.textMuted }}>Aguarde, montando o documento</div>
+                <div style={{ marginTop:14,width:120,height:4,background:C.border,borderRadius:2,margin:"14px auto 0",overflow:"hidden" }}>
+                  <div style={{ height:"100%",width:"60%",background:`linear-gradient(90deg,${C.yellow},${C.accent})`,borderRadius:2,animation:"spin 1s linear infinite" }}/>
+                </div>
               </div>
             </div>
           )}
@@ -581,38 +885,38 @@ export default function MapaPage() {
       </div>
 
       {/* ── PAINEL DIREITO desktop ── */}
-      <div className="mapa-painel-dir" style={{ width:230, background:C.surface, borderLeft:`1px solid ${C.border}`, padding:"16px 14px", flexShrink:0, overflowY:"auto" }}>
+      <div className="mapa-painel-dir" style={{ width:230,background:C.surface,borderLeft:`1px solid ${C.border}`,padding:"16px 14px",flexShrink:0,overflowY:"auto" }}>
         {score&&<CardScore score={score}/>}
-        <div style={{ fontSize:13, fontWeight:700, marginBottom:14 }}>🗂️ Camadas</div>
+        <div style={{ fontSize:13,fontWeight:700,marginBottom:14 }}>🗂️ Camadas</div>
         {camadas.map(c=>(
-          <div key={c.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-              <div style={{ width:10, height:10, borderRadius:2, background:c.color, flexShrink:0 }}/>
-              <span style={{ fontSize:12, color:c.ativa?C.text:C.textDim }}>{c.icon} {c.label}</span>
+          <div key={c.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ display:"flex",alignItems:"center",gap:7 }}>
+              <div style={{ width:10,height:10,borderRadius:2,background:c.color,flexShrink:0 }}/>
+              <span style={{ fontSize:12,color:c.ativa?C.text:C.textDim }}>{c.icon} {c.label}</span>
             </div>
-            <div onClick={()=>toggleCamada(c.id)} style={{ width:34, height:18, borderRadius:9, background:c.ativa?C.green3:C.border, position:"relative", cursor:"pointer", transition:"background 0.2s", flexShrink:0 }}>
-              <div style={{ position:"absolute", top:2, left:c.ativa?18:2, width:14, height:14, borderRadius:"50%", background:"white", transition:"left 0.2s" }}/>
+            <div onClick={()=>toggleCamada(c.id)} style={{ width:34,height:18,borderRadius:9,background:c.ativa?C.green3:C.border,position:"relative",cursor:"pointer",transition:"background 0.2s",flexShrink:0 }}>
+              <div style={{ position:"absolute",top:2,left:c.ativa?18:2,width:14,height:14,borderRadius:"50%",background:"white",transition:"left 0.2s" }}/>
             </div>
           </div>
         ))}
         <div style={{ marginTop:20 }}>
-          <div style={{ fontSize:13, fontWeight:700, marginBottom:12 }}>📊 Estatísticas</div>
+          <div style={{ fontSize:13,fontWeight:700,marginBottom:12 }}>📊 Estatísticas</div>
           {[["Área Total",fazenda.area,C.accent],["APP",fazenda.app,C.blue],["Reserva Legal",fazenda.rl,C.accentBright]].map(([l,v,c])=>(
             <div key={l} style={{ marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:4 }}>
+              <div style={{ display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4 }}>
                 <span style={{ color:C.textMuted }}>{l}</span>
-                <span style={{ fontWeight:700, color:c }}>{v||"—"}</span>
+                <span style={{ fontWeight:700,color:c }}>{v||"—"}</span>
               </div>
-              <div style={{ height:4, background:C.bg, borderRadius:2, overflow:"hidden" }}>
-                <div style={{ height:"100%", width:l==="Área Total"?"100%":l==="APP"?"14%":"31%", background:`linear-gradient(90deg,${c}80,${c})`, borderRadius:2 }}/>
+              <div style={{ height:4,background:C.bg,borderRadius:2,overflow:"hidden" }}>
+                <div style={{ height:"100%",width:l==="Área Total"?"100%":l==="APP"?"14%":"31%",background:`linear-gradient(90deg,${c}80,${c})`,borderRadius:2 }}/>
               </div>
             </div>
           ))}
         </div>
         <div style={{ marginTop:8 }}>
-          <div style={{ fontSize:13, fontWeight:700, marginBottom:10 }}>🔗 Links Úteis</div>
+          <div style={{ fontSize:13,fontWeight:700,marginBottom:10 }}>🔗 Links Úteis</div>
           {[["🌿 SICAR","https://www.car.gov.br"],["⛔ IBAMA","https://ibama.gov.br"],["📡 INPE","http://terrabrasilis.dpi.inpe.br"],["🗂️ SIGEF","https://sigef.incra.gov.br"],["📋 INCRA","https://www.gov.br/incra"]].map(([l,url])=>(
-            <a key={l} href={url} target="_blank" rel="noreferrer" style={{ display:"block", fontSize:11, color:C.textMuted, padding:"5px 0", borderBottom:`1px solid ${C.border}`, textDecoration:"none" }} onMouseOver={e=>e.target.style.color=C.accentBright} onMouseOut={e=>e.target.style.color=C.textMuted}>{l} ↗</a>
+            <a key={l} href={url} target="_blank" rel="noreferrer" style={{ display:"block",fontSize:11,color:C.textMuted,padding:"5px 0",borderBottom:`1px solid ${C.border}`,textDecoration:"none" }} onMouseOver={e=>e.target.style.color=C.accentBright} onMouseOut={e=>e.target.style.color=C.textMuted}>{l} ↗</a>
           ))}
         </div>
       </div>
