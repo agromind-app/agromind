@@ -1,3 +1,5 @@
+const PROXY_URL = "https://agromind-proxy.agromindpro.workers.dev";
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -8,22 +10,18 @@ export default async function handler(req, res) {
   try {
     const { car, lat, lng, ccir, itr, proprietario, nomeFazenda } = req.body;
 
-    // Validação — precisa de pelo menos um campo
     if (!car && !ccir && !itr && !proprietario && !nomeFazenda && (!lat || !lng)) {
       return res.status(400).json({ sucesso: false, error: "Informe CAR, CCIR, ITR, GPS ou outro critério de busca." });
     }
 
-    // Busca SICAR por qualquer critério disponível
     const [sicar, sigef] = await Promise.all([
       buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }),
       buscarSIGEF({ car, ccir }),
     ]);
 
-    // Extrai coordenadas reais
     const coordLat = lat || sicar?.lat || sigef?.lat || null;
     const coordLng = lng || sicar?.lng || sigef?.lng || null;
 
-    // Busca dados ambientais e clima em paralelo
     const [ibama, prodes, clima, nasa, cotacoes] = await Promise.all([
       buscarIBAMA(car || sicar?.car || ccir),
       buscarPRODES(coordLat, coordLng),
@@ -38,14 +36,7 @@ export default async function handler(req, res) {
       sucesso: true,
       car: car || sicar?.car || null,
       coordenadas: { lat: coordLat, lng: coordLng },
-      sicar,
-      ibama,
-      prodes,
-      sigef,
-      clima,
-      nasa,
-      cotacoes,
-      score,
+      sicar, ibama, prodes, sigef, clima, nasa, cotacoes, score,
       atualizadoEm: new Date().toISOString(),
     });
   } catch (error) {
@@ -53,7 +44,6 @@ export default async function handler(req, res) {
   }
 }
 
-// Headers que simulam browser brasileiro — aumenta chance de passar no SICAR
 const HEADERS_BR = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   "Accept": "application/json, text/plain, */*",
@@ -62,31 +52,20 @@ const HEADERS_BR = {
   "Referer": "https://www.car.gov.br/publico/imoveis/index",
 };
 
-// ── SICAR — busca por CAR, CCIR, ITR, Proprietário ou Nome ──
 async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
   try {
-    let url = "";
     let filtro = "";
+    if (car) filtro = `cod_imovel='${car.toUpperCase()}'`;
+    else if (ccir) filtro = `num_ccir='${ccir.replace(/[.\-]/g, "")}'`;
+    else if (itr) filtro = `num_nirf='${itr.replace(/[.\-]/g, "")}'`;
+    else if (proprietario) filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
+    else if (nomeFazenda) filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
+    else return null;
 
-    if (car) {
-      filtro = `cod_imovel='${car.toUpperCase()}'`;
-    } else if (ccir) {
-      filtro = `num_ccir='${ccir.replace(/[.\-]/g, "")}'`;
-    } else if (itr) {
-      filtro = `num_nirf='${itr.replace(/[.\-]/g, "")}'`;
-    } else if (proprietario) {
-      filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
-    } else if (nomeFazenda) {
-      filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
-    } else {
-      return null;
-    }
+    const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=sicar:SICAR_IMOVEL&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application/json&maxFeatures=1`;
 
-    url = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=sicar:SICAR_IMOVEL&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application/json&maxFeatures=1`;
-
-    const resp = await fetch(url, {
-      headers: HEADERS_BR,
-      signal: AbortSignal.timeout(10000),
+    const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(sicarUrl)}`, {
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!resp.ok) throw new Error(`SICAR HTTP ${resp.status}`);
@@ -139,15 +118,11 @@ function traduzirSituacao(cod) {
   return { AT:"Ativo", CA:"Cancelado", SU:"Suspenso", PE:"Pendente", AN:"Análise" }[cod] || cod || "Desconhecido";
 }
 
-// ── IBAMA ──
 async function buscarIBAMA(identificador) {
   if (!identificador) return { encontrado: false, temEmbargo: false, totalEmbargos: 0, embargos: [] };
   try {
     const url = `https://servicos.ibama.gov.br/phpesp/public/embargo/consultarEmbargoPublico.php?num_car=${encodeURIComponent(identificador)}&formato=json`;
-    const resp = await fetch(url, {
-      headers: HEADERS_BR,
-      signal: AbortSignal.timeout(8000),
-    });
+    const resp = await fetch(url, { headers: HEADERS_BR, signal: AbortSignal.timeout(8000) });
     if (!resp.ok) throw new Error(`IBAMA HTTP ${resp.status}`);
     const data = await resp.json();
     const embargos = Array.isArray(data) ? data : (data.data || data.result || []);
@@ -170,7 +145,6 @@ async function buscarIBAMA(identificador) {
   }
 }
 
-// ── PRODES/INPE ──
 async function buscarPRODES(lat, lng) {
   if (!lat || !lng) return { encontrado: false, temAlerta: false, totalAlertas: 0, alertas: [] };
   try {
@@ -200,23 +174,18 @@ async function buscarPRODES(lat, lng) {
   }
 }
 
-// ── SIGEF/INCRA ──
 async function buscarSIGEF({ car, ccir }) {
   const q = car || ccir;
   if (!q) return null;
   try {
     const url = `https://sigef.incra.gov.br/geo/parcela/exportar/geojson/?q=${encodeURIComponent(q)}`;
-    const resp = await fetch(url, {
-      headers: HEADERS_BR,
-      signal: AbortSignal.timeout(8000),
-    });
+    const resp = await fetch(url, { headers: HEADERS_BR, signal: AbortSignal.timeout(8000) });
     if (!resp.ok) throw new Error(`SIGEF HTTP ${resp.status}`);
     const data = await resp.json();
     const features = data.features || [];
     if (features.length === 0) return { encontrado: false, certificado: false, mensagem: "Não localizado no SIGEF/INCRA" };
     const props = features[0].properties;
     const geom = features[0].geometry;
-
     let lat = null, lng = null;
     if (geom?.coordinates) {
       try {
@@ -227,7 +196,6 @@ async function buscarSIGEF({ car, ccir }) {
         lng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
       } catch {}
     }
-
     return {
       encontrado: true,
       certificado: props.situacao === "CE",
@@ -247,7 +215,6 @@ async function buscarSIGEF({ car, ccir }) {
   }
 }
 
-// ── CLIMA — Open-Meteo ──
 async function buscarClima(lat, lng) {
   if (!lat || !lng) return { encontrado: false, erro: "Coordenadas não disponíveis" };
   try {
@@ -294,7 +261,6 @@ function descricaoClima(code) {
   return "🌡️ --";
 }
 
-// ── NASA POWER ──
 async function buscarNASA(lat, lng) {
   if (!lat || !lng) return { encontrado: false, erro: "Coordenadas não disponíveis" };
   try {
@@ -324,7 +290,6 @@ async function buscarNASA(lat, lng) {
   }
 }
 
-// ── COTAÇÕES ──
 async function buscarCotacoes() {
   try {
     const resp = await fetch("https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL", { signal: AbortSignal.timeout(5000) });
@@ -347,7 +312,6 @@ async function buscarCotacoes() {
   }
 }
 
-// ── SCORE IA ──
 function calcularScore({ sicar, ibama, prodes, sigef }) {
   let score = 100;
   const fatores = [];
