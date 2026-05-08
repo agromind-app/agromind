@@ -24,7 +24,7 @@ const CAMADAS = [
 ];
 
 const TIPOS_BUSCA = [
-  { id:"car",          label:"CAR",          icon:"📋", placeholder:"Ex: MT-5107040-9B4D7A3E2F1C6B8A0D5E9F3C" },
+  { id:"car",          label:"CAR",          icon:"📋", placeholder:"Ex: MA-2107357-003AE88CE99B42349CC04EC7C12DFBC6" },
   { id:"itr",          label:"ITR",          icon:"💰", placeholder:"Ex: 12.345.678-9" },
   { id:"ccir",         label:"CCIR",         icon:"📄", placeholder:"Ex: 110.035.031.500-2" },
   { id:"gps",          label:"GPS",          icon:"📍", placeholder:"Ex: -11.8456, -55.1987" },
@@ -40,6 +40,29 @@ const FAZENDA_MOCK = {
   app:"183,4 ha (14,3%)", rl:"399,8 ha (31,1%)",
   coordenadas:{ lat:-11.8456, lng:-55.1987 }, embargo:false, prodes:false,
 };
+
+// ─── Converte dados da API para o formato fazenda ─────────────────
+function dadosParaFazenda(dados) {
+  if (!dados) return null;
+  return {
+    nome:         dados.sicar?.nome        || dados.car || "Imóvel Rural",
+    car:          dados.car                || dados.sicar?.car || "—",
+    municipio:    dados.sicar?.municipio   ? `${dados.sicar.municipio}, ${dados.sicar.uf||""}` : "—",
+    area:         dados.sicar?.area        || "—",
+    app:          dados.sicar?.app         || "—",
+    rl:           dados.sicar?.rl          || "—",
+    proprietario: dados.sicar?.proprietario|| "—",
+    modulos:      dados.sicar?.modulos     || "—",
+    sigef:        dados.sigef?.situacaoLabel || (dados.sigef?.encontrado ? "Localizado" : "—"),
+    ccir:         dados.sigef?.ccir        || dados.sicar?.ccir || "—",
+    itr:          dados.sicar?.nirf        ? `NIRF: ${dados.sicar.nirf}` : "—",
+    embargo:      dados.ibama?.temEmbargo  || false,
+    prodes:       dados.prodes?.temAlerta  || false,
+    coordenadas:  dados.coordenadas?.lat
+      ? { lat: dados.coordenadas.lat, lng: dados.coordenadas.lng }
+      : FAZENDA_MOCK.coordenadas,
+  };
+}
 
 const chip = (txt, color) => (
   <span style={{ display:"inline-flex",alignItems:"center",fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:20,background:`${color}20`,color,border:`1px solid ${color}30` }}>{txt}</span>
@@ -97,8 +120,6 @@ function LaudoVisual({ fazenda, dadosReais, numeroLaudo }) {
 
   return (
     <div id="laudo-conteudo" style={{ width:794,background:"#ffffff",fontFamily:"Georgia,serif",color:"#1a2e1a" }}>
-
-      {/* CABEÇALHO */}
       <div style={{ background:"linear-gradient(135deg,#0d5c2e 0%,#12803f 50%,#16a34a 100%)",padding:"36px 40px 28px",color:"white" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
           <div>
@@ -131,10 +152,7 @@ function LaudoVisual({ fazenda, dadosReais, numeroLaudo }) {
         </div>
       </div>
 
-      {/* CORPO */}
       <div style={{ padding:"28px 40px",display:"flex",flexDirection:"column",gap:24 }}>
-
-        {/* 1. IDENTIFICAÇÃO */}
         <div>
           <SH icon="📋" title="1. IDENTIFICAÇÃO DO IMÓVEL" color="#16a34a" />
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 24px" }}>
@@ -160,12 +178,11 @@ function LaudoVisual({ fazenda, dadosReais, numeroLaudo }) {
           </div>
         </div>
 
-        {/* 2. SCORE IA */}
         <div>
           <SH icon="🤖" title="2. SCORE IA — ANÁLISE DE RISCO" color="#22c55e" />
           <div style={{ display:"flex",gap:20,alignItems:"flex-start" }}>
             <div style={{ textAlign:"center",flexShrink:0 }}>
-              <div style={{ width:90,height:90,borderRadius:"50%",background:`conic-gradient(${scoreCor} 0deg,${scoreCor} ${(scoreValor/100)*360}deg,#e5e7eb ${(scoreValor/100)*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px",boxShadow:`0 4px 16px ${scoreCor}40` }}>
+              <div style={{ width:90,height:90,borderRadius:"50%",background:`conic-gradient(${scoreCor} 0deg,${scoreCor} ${(scoreValor/100)*360}deg,#e5e7eb ${(scoreValor/100)*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px" }}>
                 <div style={{ width:68,height:68,borderRadius:"50%",background:"white",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center" }}>
                   <div style={{ fontSize:24,fontWeight:900,color:scoreCor,lineHeight:1 }}>{scoreValor}</div>
                   <div style={{ fontSize:9,color:"#9ca3af" }}>/100</div>
@@ -181,127 +198,64 @@ function LaudoVisual({ fazenda, dadosReais, numeroLaudo }) {
                       <span style={{ fontWeight:700,color:f.cor }}>{f.impacto===0?"✅ OK":f.impacto}</span>
                     </div>
                   ))
-                : <div style={{ fontSize:11,color:"#6b7280",fontStyle:"italic",marginTop:8 }}>Realize uma consulta real para visualizar os fatores detalhados do Score IA.</div>
+                : <div style={{ fontSize:11,color:"#6b7280",fontStyle:"italic",marginTop:8 }}>Realize uma consulta real para visualizar os fatores detalhados.</div>
               }
-              {score?.analise&&(
-                <div style={{ marginTop:10,padding:"8px 12px",background:`${scoreCor}10`,border:`1px solid ${scoreCor}30`,borderRadius:8,fontSize:11,color:"#374151",lineHeight:1.6 }}>{score.analise}</div>
-              )}
             </div>
           </div>
         </div>
 
-        {/* 3. IBAMA */}
         <div>
           <SH icon="⛔" title="3. EMBARGOS IBAMA" color="#ef4444" />
-          <div style={{ marginBottom:10 }}>
-            <Badge ok={!fazenda.embargo} textoOk="Sem Embargo Ativo" textoNok="Embargo IBAMA Ativo" />
-          </div>
+          <div style={{ marginBottom:10 }}><Badge ok={!fazenda.embargo} textoOk="Sem Embargo Ativo" textoNok="Embargo IBAMA Ativo" /></div>
           {ibama?.embargos?.length>0
-            ? ibama.embargos.map((e,i)=>(
-                <div key={i} style={{ padding:"8px 12px",marginBottom:6,background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:8,fontSize:11 }}>
-                  <div style={{ fontWeight:700,color:"#dc2626",marginBottom:3 }}>⛔ Embargo #{e.numTermo||i+1}</div>
-                  <div style={{ color:"#6b7280" }}>Área: {e.area||"—"} ha · Data: {e.dataEmbargo||"—"}</div>
-                  <div style={{ color:"#6b7280" }}>Motivo: {e.descricao||"—"}</div>
-                </div>
-              ))
-            : <div style={{ padding:"10px 14px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,fontSize:11,color:"#166534" }}>✅ Nenhum embargo encontrado na base IBAMA para este imóvel.</div>
+            ? ibama.embargos.map((e,i)=>(<div key={i} style={{ padding:"8px 12px",marginBottom:6,background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:8,fontSize:11 }}><div style={{ fontWeight:700,color:"#dc2626" }}>⛔ Embargo #{i+1}</div><div style={{ color:"#6b7280" }}>Área: {e.area||"—"} · Data: {e.data||"—"}</div></div>))
+            : <div style={{ padding:"10px 14px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,fontSize:11,color:"#166534" }}>✅ Nenhum embargo encontrado na base IBAMA.</div>
           }
         </div>
 
-        {/* 4. PRODES */}
         <div>
           <SH icon="📡" title="4. PRODES / INPE — DESMATAMENTO" color="#f97316" />
-          <div style={{ marginBottom:10 }}>
-            <Badge ok={!fazenda.prodes} textoOk="Sem Alerta PRODES" textoNok="Alerta PRODES Ativo" />
-          </div>
+          <div style={{ marginBottom:10 }}><Badge ok={!fazenda.prodes} textoOk="Sem Alerta PRODES" textoNok="Alerta PRODES Ativo" /></div>
           {prodes?.alertas?.length>0
-            ? prodes.alertas.map((a,i)=>(
-                <div key={i} style={{ padding:"8px 12px",marginBottom:6,background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,fontSize:11 }}>
-                  <div style={{ fontWeight:700,color:"#ea580c",marginBottom:3 }}>🔴 Alerta #{i+1}</div>
-                  <div style={{ color:"#6b7280" }}>Área: {a.areaha||"—"} ha · Ano: {a.year||"—"}</div>
-                  <div style={{ color:"#6b7280" }}>Classe: {a.classname||"—"}</div>
-                </div>
-              ))
-            : <div style={{ padding:"10px 14px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,fontSize:11,color:"#166534" }}>✅ Nenhum alerta de desmatamento PRODES encontrado para este imóvel.</div>
+            ? prodes.alertas.map((a,i)=>(<div key={i} style={{ padding:"8px 12px",marginBottom:6,background:"#fff7ed",border:"1px solid #fdba74",borderRadius:8,fontSize:11 }}><div style={{ fontWeight:700,color:"#ea580c" }}>🔴 Alerta #{i+1}</div><div style={{ color:"#6b7280" }}>Área: {a.areaKm2||"—"} km² · Data: {a.data||"—"}</div></div>))
+            : <div style={{ padding:"10px 14px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,fontSize:11,color:"#166534" }}>✅ Nenhum alerta de desmatamento encontrado.</div>
           }
         </div>
 
-        {/* 5. CLIMA + NASA */}
         {(clima?.encontrado||nasa?.encontrado)&&(
           <div>
             <SH icon="🌤️" title="5. CLIMA & DADOS NASA POWER" color="#3b82f6" />
             <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:16 }}>
-              {clima?.encontrado&&(
-                <div>
-                  <div style={{ fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:8 }}>🌤️ Clima Atual</div>
-                  {[["🌡️ Temperatura",`${clima.atual?.temperatura??"—"}°C`],["💧 Umidade",`${clima.atual?.umidade??"—"}%`],["💨 Vento",`${clima.atual?.vento??"—"} km/h`],["🌧️ Precipitação",`${clima.atual?.precipitacao??0} mm`],["📅 Chuva 30 dias",`${clima.precipTotal30d??"—"} mm`],["📝 Condição",clima.atual?.descricao??"—"]].map(([l,v])=>(
-                    <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}>
-                      <span style={{ color:"#6b7280" }}>{l}</span>
-                      <span style={{ fontWeight:700,color:"#3b82f6" }}>{v}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {nasa?.encontrado&&(
-                <div>
-                  <div style={{ fontSize:11,fontWeight:700,color:"#a78bfa",marginBottom:8 }}>🛰️ Solo & Radiação — NASA POWER</div>
-                  {[["☀️ Radiação Solar",nasa.radiacaoSolar?`${nasa.radiacaoSolar} MJ/m²`:"—"],["🌡️ Temp. Média",nasa.temperaturaMedia?`${nasa.temperaturaMedia}°C`:"—"],["🌧️ Precip. Média",nasa.precipitacaoMedia?`${nasa.precipitacaoMedia} mm/d`:"—"],["💧 Umid. Relativa",nasa.umidadeRelativa?`${nasa.umidadeRelativa}%`:"—"]].map(([l,v])=>(
-                    <div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}>
-                      <span style={{ color:"#6b7280" }}>{l}</span>
-                      <span style={{ fontWeight:700,color:"#a78bfa" }}>{v}</span>
-                    </div>
-                  ))}
-                  <div style={{ fontSize:9,color:"#9ca3af",marginTop:6,textAlign:"center" }}>Média 7 dias · Fonte: NASA POWER</div>
-                </div>
-              )}
+              {clima?.encontrado&&(<div>
+                <div style={{ fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:8 }}>🌤️ Clima Atual</div>
+                {[["🌡️ Temperatura",`${clima.atual?.temperatura??"—"}°C`],["💧 Umidade",`${clima.atual?.umidade??"—"}%`],["💨 Vento",`${clima.atual?.vento??"—"} km/h`],["🌧️ Chuva 30 dias",`${clima.precipTotal30d??"—"} mm`]].map(([l,v])=>(<div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}><span style={{ color:"#6b7280" }}>{l}</span><span style={{ fontWeight:700,color:"#3b82f6" }}>{v}</span></div>))}
+              </div>)}
+              {nasa?.encontrado&&(<div>
+                <div style={{ fontSize:11,fontWeight:700,color:"#a78bfa",marginBottom:8 }}>🛰️ NASA POWER</div>
+                {[["☀️ Radiação Solar",nasa.radiacaoSolar?`${nasa.radiacaoSolar} MJ/m²`:"—"],["🌡️ Temp. Média",nasa.temperaturaMedia?`${nasa.temperaturaMedia}°C`:"—"],["💧 Umid. Relativa",nasa.umidadeRelativa?`${nasa.umidadeRelativa}%`:"—"]].map(([l,v])=>(<div key={l} style={{ display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #e5e7eb",fontSize:11 }}><span style={{ color:"#6b7280" }}>{l}</span><span style={{ fontWeight:700,color:"#a78bfa" }}>{v}</span></div>))}
+              </div>)}
             </div>
           </div>
         )}
 
-        {/* 6. COTAÇÕES */}
         {cotacoes?.encontrado&&(
           <div>
             <SH icon="📊" title="6. COTAÇÕES CEPEA" color="#fbbf24" />
-            {cotacoes.dolarHoje&&(
-              <div style={{ fontSize:11,color:"#6b7280",marginBottom:8 }}>
-                💵 Dólar hoje: <strong style={{ color:"#f59e0b" }}>R$ {Number(cotacoes.dolarHoje).toFixed(2)}</strong> · Ref: {cotacoes.atualizadoEm}
-              </div>
-            )}
             <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8 }}>
-              {Object.entries(cotacoes.produtos||{}).map(([k,v])=>(
-                <div key={k} style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 10px" }}>
-                  <div style={{ fontSize:11,fontWeight:700,color:"#1a2e1a",marginBottom:2 }}>{v.nome}</div>
-                  <div style={{ fontSize:13,fontWeight:900,color:"#d97706" }}>{v.preco?`R$ ${Number(v.preco).toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—"}</div>
-                  <div style={{ fontSize:10,color:"#6b7280" }}>{v.unidade}</div>
-                  {v.variacao!=null&&<div style={{ fontSize:10,color:v.variacao>=0?"#16a34a":"#dc2626",fontWeight:700 }}>{v.variacao>=0?"▲":"▼"} {Math.abs(v.variacao).toFixed(1)}%</div>}
-                </div>
-              ))}
+              {Object.entries(cotacoes.produtos||{}).map(([k,v])=>(<div key={k} style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 10px" }}><div style={{ fontSize:11,fontWeight:700,color:"#1a2e1a",marginBottom:2 }}>{v.nome}</div><div style={{ fontSize:13,fontWeight:900,color:"#d97706" }}>{v.preco?`R$ ${Number(v.preco).toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—"}</div><div style={{ fontSize:10,color:"#6b7280" }}>{v.unidade}</div></div>))}
             </div>
           </div>
         )}
 
-        {/* 7. LOCALIZAÇÃO */}
-        <div>
-          <SH icon="🗺️" title="7. LOCALIZAÇÃO GEOGRÁFICA" color="#16a34a" />
-          <div style={{ height:180,background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"2px dashed #86efac",borderRadius:12,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#166534" }}>
-            <div style={{ fontSize:36,marginBottom:8 }}>🗺️</div>
-            <div style={{ fontSize:12,fontWeight:700 }}>Mapa da Propriedade</div>
-            <div style={{ fontSize:10,color:"#4ade80",marginTop:4 }}>📍 {fazenda.coordenadas?.lat}°, {fazenda.coordenadas?.lng}°</div>
-            <div style={{ fontSize:10,color:"#6b7280",marginTop:8 }}>Acesse o mapa interativo em agromind-fawn.vercel.app</div>
-          </div>
-        </div>
-
-        {/* DECLARAÇÃO */}
         <div style={{ background:"#f8fdf8",border:"1px solid #86efac",borderRadius:10,padding:"14px 18px",fontSize:10,color:"#374151",lineHeight:1.7 }}>
           <div style={{ fontWeight:700,color:"#166534",marginBottom:6,fontSize:11 }}>📋 Declaração</div>
-          Este laudo foi gerado automaticamente pela plataforma AgroMind com base em dados públicos oficiais (SICAR/CAR, IBAMA, PRODES/INPE, SIGEF/INCRA, Open-Meteo, NASA POWER, CEPEA). As informações são de caráter informativo e não substituem análise técnica por engenheiro agrônomo ou ambiental habilitado. Data de geração: {dataHoje()}.
+          Este laudo foi gerado automaticamente pela plataforma AgroMind com base em dados públicos oficiais (SICAR/CAR, IBAMA, PRODES/INPE, SIGEF/INCRA, Open-Meteo, NASA POWER, CEPEA). As informações são de caráter informativo. Data de geração: {dataHoje()}.
         </div>
       </div>
 
-      {/* RODAPÉ */}
       <div style={{ background:"linear-gradient(135deg,#0d5c2e,#16a34a)",padding:"14px 40px",display:"flex",justifyContent:"space-between",alignItems:"center",color:"rgba(255,255,255,0.85)" }}>
         <div style={{ fontSize:11 }}>🌿 <strong>AgroMind</strong> — Inteligência Rural Brasileira</div>
-        <div style={{ fontSize:10 }}>{numeroLaudo} · agromind-fawn.vercel.app</div>
+        <div style={{ fontSize:10 }}>{numeroLaudo} · agromindpro.com.br</div>
         <div style={{ fontSize:10 }}>{dataHoje()}</div>
       </div>
     </div>
@@ -312,46 +266,31 @@ async function gerarLaudoPDF(fazenda, dadosReais, setGerando) {
   setGerando(true);
   try {
     const numeroLaudo = gerarNumeroLaudo();
-
     const container = document.createElement("div");
     container.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;background:#ffffff;z-index:-1;";
     document.body.appendChild(container);
-
     const { createRoot } = await import("react-dom/client");
     const root = createRoot(container);
-
-    await new Promise(resolve => {
-      root.render(<LaudoVisual fazenda={fazenda} dadosReais={dadosReais} numeroLaudo={numeroLaudo} />);
-      setTimeout(resolve, 600);
-    });
-
+    await new Promise(resolve => { root.render(<LaudoVisual fazenda={fazenda} dadosReais={dadosReais} numeroLaudo={numeroLaudo} />); setTimeout(resolve, 600); });
     const elemento = container.querySelector("#laudo-conteudo");
     if (!elemento) throw new Error("Elemento do laudo não encontrado");
-
     const canvas = await html2canvas(elemento, { scale:2, useCORS:true, backgroundColor:"#ffffff", logging:false });
-
     const pdf = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-    const larguraMM  = 210;
-    const alturaMM   = 297;
-    const ratio      = larguraMM / canvas.width;
+    const larguraMM = 210, alturaMM = 297;
+    const ratio = larguraMM / canvas.width;
     const totalAltMM = canvas.height * ratio;
-
     let posY = 0, pagina = 0;
     while (posY < totalAltMM) {
       if (pagina > 0) pdf.addPage();
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, -posY, larguraMM, totalAltMM);
-      posY += alturaMM;
-      pagina++;
+      posY += alturaMM; pagina++;
     }
-
     const nomeArquivo = `Laudo_${(fazenda.nome||"Imovel").replace(/\s+/g,"_")}_${numeroLaudo}.pdf`;
     pdf.save(nomeArquivo);
-
     root.unmount();
     document.body.removeChild(container);
-    alert(`✅ Laudo gerado com sucesso!\n📄 ${nomeArquivo}`);
+    alert(`✅ Laudo gerado!\n📄 ${nomeArquivo}`);
   } catch (err) {
-    console.error("Erro ao gerar PDF:", err);
     alert(`❌ Erro ao gerar laudo: ${err.message}`);
   } finally {
     setGerando(false);
@@ -380,7 +319,7 @@ function CardClima({ clima }) {
       </div>
       {(clima.previsao7dias||[]).length>0&&(
         <>
-          <div style={{ fontSize:10,color:C.textMuted,marginBottom:5 }}>Previsão 7 dias (mm chuva)</div>
+          <div style={{ fontSize:10,color:C.textMuted,marginBottom:5 }}>Previsão 7 dias (mm)</div>
           <div style={{ display:"flex",alignItems:"flex-end",gap:3,height:38 }}>
             {clima.previsao7dias.map((d,i)=>(
               <div key={i} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2 }}>
@@ -400,39 +339,36 @@ function CardNASA({ nasa }) {
   if (!nasa?.encontrado) return null;
   return (
     <div style={{ background:C.card,border:`1px solid ${C.purple}30`,borderRadius:14,padding:14 }}>
-      <div style={{ fontSize:12,fontWeight:700,marginBottom:10 }}>🛰️ Solo & Radiação — NASA</div>
+      <div style={{ fontSize:12,fontWeight:700,marginBottom:10 }}>🛰️ NASA POWER</div>
       <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
-        {[["☀️ Radiação Solar",nasa.radiacaoSolar?`${nasa.radiacaoSolar} MJ/m²`:"—"],["🌡️ Temp. Média",nasa.temperaturaMedia?`${nasa.temperaturaMedia}°C`:"—"],["🌧️ Precip. Média",nasa.precipitacaoMedia?`${nasa.precipitacaoMedia} mm/d`:"—"],["💧 Umid. Relativa",nasa.umidadeRelativa?`${nasa.umidadeRelativa}%`:"—"]].map(([l,v])=>(
+        {[["☀️ Radiação",nasa.radiacaoSolar?`${nasa.radiacaoSolar} MJ/m²`:"—"],["🌡️ Temp. Média",nasa.temperaturaMedia?`${nasa.temperaturaMedia}°C`:"—"],["🌧️ Precip.",nasa.precipitacaoMedia?`${nasa.precipitacaoMedia} mm/d`:"—"],["💧 Umidade",nasa.umidadeRelativa?`${nasa.umidadeRelativa}%`:"—"]].map(([l,v])=>(
           <div key={l} style={{ background:`${C.purple}10`,border:`1px solid ${C.purple}20`,borderRadius:8,padding:"7px 9px" }}>
             <div style={{ fontSize:10,color:C.textMuted }}>{l}</div>
             <div style={{ fontSize:13,fontWeight:800,color:C.purple }}>{v}</div>
           </div>
         ))}
       </div>
-      <div style={{ marginTop:6,fontSize:10,color:C.textDim,textAlign:"center" }}>Média 7 dias · NASA POWER</div>
     </div>
   );
 }
 
 function CardCotacoes({ cotacoes }) {
   if (!cotacoes?.encontrado) return null;
-  const prods = cotacoes.produtos || {};
   return (
     <div style={{ background:C.card,border:`1px solid ${C.yellow}30`,borderRadius:14,padding:14 }}>
       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
         <div style={{ fontSize:12,fontWeight:700 }}>📊 Cotações CEPEA</div>
         {cotacoes.dolarHoje&&<span style={{ fontSize:10,color:C.textMuted }}>💵 R$ {Number(cotacoes.dolarHoje).toFixed(2)}</span>}
       </div>
-      {Object.entries(prods).map(([k,v])=>(
+      {Object.entries(cotacoes.produtos||{}).map(([k,v])=>(
         <div key={k} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${C.border}` }}>
           <div><div style={{ fontSize:12,fontWeight:600,color:C.text }}>{v.nome}</div><div style={{ fontSize:10,color:C.textMuted }}>{v.unidade}</div></div>
           <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:13,fontWeight:800,color:C.yellow }}>{v.preco?`R$ ${Number(v.preco).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}`:"—"}</div>
-            {v.variacao!==null&&<div style={{ fontSize:10,color:v.variacao>=0?C.accent:C.red }}>{v.variacao>=0?"▲":"▼"} {Math.abs(v.variacao).toFixed(1)}%</div>}
+            <div style={{ fontSize:13,fontWeight:800,color:C.yellow }}>{v.preco?`R$ ${Number(v.preco).toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—"}</div>
+            {v.variacao!=null&&<div style={{ fontSize:10,color:v.variacao>=0?C.accent:C.red }}>{v.variacao>=0?"▲":"▼"} {Math.abs(v.variacao).toFixed(1)}%</div>}
           </div>
         </div>
       ))}
-      <div style={{ marginTop:5,fontSize:10,color:C.textDim,textAlign:"center" }}>Ref. {cotacoes.atualizadoEm}</div>
     </div>
   );
 }
@@ -462,7 +398,7 @@ function CardScore({ score }) {
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────
 
-export default function MapaPage() {
+export default function MapaPage({ dadosConsulta }) {
   const mapRef      = useRef(null);
   const leafletMap  = useRef(null);
   const kmlLayerRef = useRef(null);
@@ -477,6 +413,25 @@ export default function MapaPage() {
   const [erroBusca,  setErroBusca]  = useState(null);
   const [gerandoPDF, setGerandoPDF] = useState(false);
   const fileRef = useRef(null);
+
+  // ✅ Quando recebe dados da consulta externa (do App.js), carrega automaticamente
+  useEffect(() => {
+    if (!dadosConsulta) return;
+    const fazendaConvertida = dadosParaFazenda(dadosConsulta);
+    if (fazendaConvertida) {
+      setFazenda(fazendaConvertida);
+      setDadosReais(dadosConsulta);
+      // Desenha no mapa quando o mapa já estiver pronto
+      if (leafletMap.current && window.L) {
+        const geom = dadosConsulta.sicar?.geometria || dadosConsulta.sigef?.geometria;
+        if (geom) {
+          desenharReal(leafletMap.current, window.L, geom, dadosConsulta);
+        } else if (dadosConsulta.coordenadas?.lat) {
+          leafletMap.current.setView([dadosConsulta.coordenadas.lat, dadosConsulta.coordenadas.lng], 13);
+        }
+      }
+    }
+  }, [dadosConsulta]);
 
   useEffect(() => {
     if (leafletMap.current) return;
@@ -493,11 +448,39 @@ export default function MapaPage() {
   const initMap = () => {
     if (!mapRef.current || leafletMap.current) return;
     const L = window.L;
-    const map = L.map(mapRef.current, { center:[FAZENDA_MOCK.coordenadas.lat, FAZENDA_MOCK.coordenadas.lng], zoom:13, zoomControl:false });
+    const coordInicial = dadosConsulta?.coordenadas?.lat
+      ? [dadosConsulta.coordenadas.lat, dadosConsulta.coordenadas.lng]
+      : [FAZENDA_MOCK.coordenadas.lat, FAZENDA_MOCK.coordenadas.lng];
+    const map = L.map(mapRef.current, { center: coordInicial, zoom:13, zoomControl:false });
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution:"© Esri", maxZoom:19 }).addTo(map);
     L.control.zoom({ position:"bottomright" }).addTo(map);
     leafletMap.current = map;
-    desenharMock(map, L);
+
+    // Se já tem dados da consulta, desenha os dados reais
+    if (dadosConsulta) {
+      const geom = dadosConsulta.sicar?.geometria || dadosConsulta.sigef?.geometria;
+      if (geom) {
+        desenharReal(map, L, geom, dadosConsulta);
+      } else if (dadosConsulta.coordenadas?.lat) {
+        map.setView([dadosConsulta.coordenadas.lat, dadosConsulta.coordenadas.lng], 13);
+        adicionarMarcador(map, L, dadosConsulta.coordenadas.lat, dadosConsulta.coordenadas.lng, dadosConsulta);
+      }
+    } else {
+      desenharMock(map, L);
+    }
+  };
+
+  const adicionarMarcador = (map, L, lat, lng, dados) => {
+    const icon = L.divIcon({ html:`<div style="background:linear-gradient(135deg,#12803f,#22c55e);width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.4)"></div>`, iconSize:[36,36], iconAnchor:[18,36], className:"" });
+    L.marker([lat, lng], {icon}).addTo(map).bindPopup(`
+      <div style="font-family:sans-serif;min-width:220px">
+        <div style="font-weight:800;font-size:14px;color:#0d5c2e;margin-bottom:6px">🌿 ${dados.sicar?.nome||dados.car||"Imóvel Rural"}</div>
+        <div style="font-size:12px;color:#666;margin-bottom:3px">📍 ${dados.sicar?.municipio||""} ${dados.sicar?.uf?`· ${dados.sicar.uf}`:""}</div>
+        <div style="font-size:12px;color:#666;margin-bottom:3px">🌾 ${dados.sicar?.area||"—"}</div>
+        <hr style="margin:8px 0;border-color:#eee"/>
+        <div style="font-size:11px;color:#22c55e;font-weight:700">Score: ${dados.score?.valor||"—"}/100 — ${dados.score?.nivel||"—"}</div>
+      </div>
+    `).openPopup();
   };
 
   const desenharMock = (map, L) => {
@@ -512,24 +495,14 @@ export default function MapaPage() {
   };
 
   const desenharReal = (map, L, geometria, dados) => {
+    // Remove camadas existentes exceto tile
     Object.values(map._layers).forEach(layer => {
-      if (layer._latlngs || layer._latlng) map.removeLayer(layer);
+      if (layer._latlngs || layer._latlng) { try { map.removeLayer(layer); } catch {} }
     });
     const geoLayer = L.geoJSON(geometria, { style:{ color:"#22c55e",weight:3,fillColor:"#22c55e",fillOpacity:0.2 } }).addTo(map);
     const bounds = geoLayer.getBounds();
     const center = bounds.getCenter();
-    const icon = L.divIcon({ html:`<div style="background:linear-gradient(135deg,#12803f,#22c55e);width:36px;height:36px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.4)"></div>`, iconSize:[36,36], iconAnchor:[18,36], className:"" });
-    L.marker([center.lat,center.lng],{icon}).addTo(map).bindPopup(`
-      <div style="font-family:sans-serif;min-width:220px">
-        <div style="font-weight:800;font-size:14px;color:#0d5c2e;margin-bottom:6px">🌿 ${dados.sicar?.nome||dados.car||"Imóvel Rural"}</div>
-        <div style="font-size:12px;color:#666;margin-bottom:3px">📍 ${dados.sicar?.municipio||""} ${dados.sicar?.uf?`· ${dados.sicar.uf}`:""}</div>
-        <div style="font-size:12px;color:#666;margin-bottom:3px">🌾 ${dados.sicar?.area||"—"}</div>
-        <hr style="margin:8px 0;border-color:#eee"/>
-        <div style="font-size:11px;margin-bottom:3px">${dados.ibama?.temEmbargo?"🔴 Embargo IBAMA ativo":"✅ Sem embargo IBAMA"}</div>
-        <div style="font-size:11px;margin-bottom:3px">${dados.prodes?.temAlerta?"🔴 Alerta PRODES":"✅ Sem alerta PRODES"}</div>
-        <div style="font-size:11px;color:#22c55e;font-weight:700">Score: ${dados.score?.valor}/100 — ${dados.score?.nivel}</div>
-      </div>
-    `);
+    adicionarMarcador(map, L, center.lat, center.lng, dados);
     map.fitBounds(bounds, { padding:[40,40] });
   };
 
@@ -538,17 +511,13 @@ export default function MapaPage() {
     if (!file) return;
     setKmlNome(file.name);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      try { renderizarKML(ev.target.result, file.name); }
-      catch { alert("Erro ao ler KML."); }
-    };
+    reader.onload = (ev) => { try { renderizarKML(ev.target.result, file.name); } catch { alert("Erro ao ler KML."); } };
     reader.readAsText(file);
   };
 
   const renderizarKML = (kmlText, nomeArquivo) => {
     if (!leafletMap.current || !window.L) return;
-    const L = window.L;
-    const map = leafletMap.current;
+    const L = window.L, map = leafletMap.current;
     if (kmlLayerRef.current) { map.removeLayer(kmlLayerRef.current); kmlLayerRef.current = null; }
     try {
       const parser = new DOMParser();
@@ -571,15 +540,16 @@ export default function MapaPage() {
           layers.push(L.marker([parseFloat(parts[1]),parseFloat(parts[0])],{icon}));
         }
       });
-      if (layers.length===0) { alert("⚠️ KML importado mas nenhuma geometria encontrada."); return; }
+      if (layers.length===0) { alert("⚠️ Nenhuma geometria encontrada no KML."); return; }
       const group = L.layerGroup(layers).addTo(map);
       kmlLayerRef.current = group;
       const bounds = L.featureGroup(layers).getBounds();
       if (bounds.isValid()) map.fitBounds(bounds,{padding:[40,40]});
-      alert(`✅ KML "${nomeArquivo}" carregado com ${layers.length} elemento(s) no mapa!`);
-    } catch (err) { alert(`❌ Erro ao processar KML: ${err.message}`); }
+      alert(`✅ KML "${nomeArquivo}" carregado!`);
+    } catch (err) { alert(`❌ Erro: ${err.message}`); }
   };
 
+  // ✅ Busca no próprio mapa — também salva em dadosReais
   const buscarImovel = async () => {
     const val = searchVal.trim();
     if (!val || buscando) return;
@@ -599,33 +569,20 @@ export default function MapaPage() {
       const resp  = await fetch("/api/consulta", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
       const dados = await resp.json();
       if (!dados.sucesso) { setErroBusca(dados.error||"Erro na consulta."); setBuscando(false); return; }
-      setDadosReais(dados);
 
-      if (dados.sicar?.encontrado) {
-        setFazenda(prev=>({
-          ...prev,
-          nome:         dados.sicar.nome       || prev.nome,
-          municipio:    `${dados.sicar.municipio||""}, ${dados.sicar.uf||""}`,
-          area:         dados.sicar.area        || prev.area,
-          app:          dados.sicar.app         || prev.app,
-          rl:           dados.sicar.rl          || prev.rl,
-          proprietario: dados.sicar.proprietario|| prev.proprietario,
-          modulos:      dados.sicar.modulos     || prev.modulos,
-          sigef:        dados.sigef?.situacaoLabel || prev.sigef,
-          ccir:         dados.sigef?.ccir || dados.sicar?.ccir || prev.ccir,
-          itr:          dados.sicar?.nirf ? `NIRF: ${dados.sicar.nirf}` : prev.itr,
-          embargo:      dados.ibama?.temEmbargo  || false,
-          prodes:       dados.prodes?.temAlerta  || false,
-          coordenadas:  dados.coordenadas?.lat ? dados.coordenadas : prev.coordenadas,
-        }));
-      }
+      setDadosReais(dados);
+      const fazendaConvertida = dadosParaFazenda(dados);
+      if (fazendaConvertida) setFazenda(fazendaConvertida);
 
       if (leafletMap.current && window.L) {
         const geom = dados.sicar?.geometria || dados.sigef?.geometria;
         if (geom) desenharReal(leafletMap.current, window.L, geom, dados);
-        else if (dados.coordenadas?.lat) leafletMap.current.setView([dados.coordenadas.lat, dados.coordenadas.lng], 13);
+        else if (dados.coordenadas?.lat) {
+          leafletMap.current.setView([dados.coordenadas.lat, dados.coordenadas.lng], 13);
+          adicionarMarcador(leafletMap.current, window.L, dados.coordenadas.lat, dados.coordenadas.lng, dados);
+        }
       }
-    } catch { setErroBusca("Erro de conexão."); }
+    } catch { setErroBusca("Erro de conexão. Tente novamente."); }
     setBuscando(false);
   };
 
@@ -656,30 +613,7 @@ export default function MapaPage() {
   const scoreValor = score?.valor ?? 78;
   const scoreCor   = score?.cor   ?? C.accent;
   const tipoAtual  = TIPOS_BUSCA.find(t=>t.id===tipoBusca);
-
-  const PainelMobileInfo = () => (
-    <div className="mapa-mobile-info" style={{ display:"none",flexDirection:"column",gap:10,padding:14,borderTop:`1px solid ${C.border}`,background:C.surface }}>
-      <div style={{ display:"flex",gap:10 }}>
-        <div style={{ flex:1,background:C.card,border:`1px solid ${scoreCor}30`,borderRadius:14,padding:14,textAlign:"center" }}>
-          <div style={{ fontSize:11,color:C.textMuted,marginBottom:6 }}>🤖 Score IA</div>
-          <div style={{ fontSize:36,fontWeight:900,color:scoreCor,lineHeight:1 }}>{scoreValor}</div>
-          <div style={{ fontSize:10,color:C.textMuted }}>/100</div>
-          <div style={{ fontSize:11,color:scoreCor,marginTop:6,fontWeight:700 }}>{score?.nivel??"Baixo Risco"}</div>
-        </div>
-        <div style={{ flex:1,background:C.card,border:`1px solid ${C.accent}30`,borderRadius:14,padding:14 }}>
-          <div style={{ fontSize:11,fontWeight:700,color:C.accent,marginBottom:8 }}>{dadosReais?"📡 Status Real":"✅ Status Ambiental"}</div>
-          {[[fazenda.embargo?"⛔":"✅",fazenda.embargo?"Embargo IBAMA":"Sem embargo IBAMA"],[fazenda.prodes?"🔴":"📡",fazenda.prodes?"Alerta PRODES":"Sem alerta PRODES"],["🌱",dadosReais?"Dados verificados":"Moratória: Conforme"]].map(([icon,txt])=>(
-            <div key={txt} style={{ display:"flex",alignItems:"center",gap:6,marginBottom:5,fontSize:11 }}>
-              <span>{icon}</span><span style={{ color:C.textMuted }}>{txt}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {clima    && <CardClima clima={clima} />}
-      {nasa     && <CardNASA nasa={nasa} />}
-      {cotacoes && <CardCotacoes cotacoes={cotacoes} />}
-    </div>
-  );
+  const temDadosReais = !!dadosReais;
 
   return (
     <div className="mapa-container" style={{ display:"flex",height:"calc(100vh - 64px)",overflow:"hidden" }}>
@@ -719,27 +653,27 @@ export default function MapaPage() {
               onChange={e=>setSearchVal(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&buscarImovel()}
             />
-            <button onClick={buscarImovel} disabled={buscando} style={{ background:buscando?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:8,color:C.text,width:36,cursor:buscando?"default":"pointer",fontSize:14,flexShrink:0,opacity:buscando?0.7:1,display:"flex",alignItems:"center",justifyContent:"center" }}>
+            <button onClick={buscarImovel} disabled={buscando} style={{ background:buscando?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",borderRadius:8,color:C.text,width:36,cursor:buscando?"default":"pointer",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center" }}>
               {buscando?<div style={{ width:14,height:14,border:`2px solid ${C.text}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite" }}/>:"🔍"}
             </button>
           </div>
           {erroBusca&&<div style={{ marginTop:8,fontSize:11,color:C.red,background:`${C.red}15`,borderRadius:6,padding:"6px 10px" }}>⚠️ {erroBusca}</div>}
-          {dadosReais&&<div style={{ marginTop:8,fontSize:11,color:C.accent,background:`${C.accent}15`,borderRadius:6,padding:"6px 10px" }}>✅ Dados reais · {new Date(dadosReais.atualizadoEm).toLocaleTimeString("pt-BR")}</div>}
+          {temDadosReais&&<div style={{ marginTop:8,fontSize:11,color:C.accent,background:`${C.accent}15`,borderRadius:6,padding:"6px 10px" }}>✅ Dados reais carregados</div>}
         </div>
 
         {/* Dados do imóvel */}
         <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
             <div style={{ fontSize:13,fontWeight:700 }}>📋 Dados do Imóvel</div>
-            {chip(dadosReais?"✓ Dados Reais":"Demo", dadosReais?C.accent:C.textMuted)}
+            {chip(temDadosReais?"✓ Dados Reais":"Demo", temDadosReais?C.accent:C.textMuted)}
           </div>
           <div style={{ fontSize:13,fontWeight:800,color:C.accentBright,marginBottom:3 }}>{fazenda.nome}</div>
           <div style={{ fontSize:11,color:C.textMuted,marginBottom:10 }}>📍 {fazenda.municipio}</div>
           <InfoRow label="🌾 Área Total"      value={fazenda.area} />
-          <InfoRow label="📋 CAR"             value={fazenda.car?.substring(0,18)+"..."} />
+          <InfoRow label="📋 CAR"             value={fazenda.car?.length>18?fazenda.car.substring(0,18)+"...":fazenda.car} />
           <InfoRow label="💰 ITR/NIRF"        value={fazenda.itr} />
           <InfoRow label="📄 CCIR"            value={fazenda.ccir} />
-          <InfoRow label="👤 Proprietário"    value={fazenda.proprietario?.substring(0,22)+"..."} />
+          <InfoRow label="👤 Proprietário"    value={fazenda.proprietario?.length>22?fazenda.proprietario.substring(0,22)+"...":fazenda.proprietario} />
           <InfoRow label="📐 Módulos Fiscais" value={fazenda.modulos} />
           <InfoRow label="🗂️ SIGEF"           value={fazenda.sigef} />
           <InfoRow label="💧 APP"             value={fazenda.app} />
@@ -760,43 +694,31 @@ export default function MapaPage() {
           </button>
         </div>
 
-        {/* Cards clima/nasa/cotações */}
+        {/* Cards dados reais */}
         {clima    && <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}><CardClima clima={clima}/></div>}
         {nasa     && <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}><CardNASA nasa={nasa}/></div>}
         {cotacoes && <div style={{ padding:14,borderBottom:`1px solid ${C.border}` }}><CardCotacoes cotacoes={cotacoes}/></div>}
 
-        {/* ⚡ Ações */}
+        {/* Ações */}
         <div style={{ padding:14 }}>
           <div style={{ fontSize:12,fontWeight:700,marginBottom:10 }}>⚡ Ações</div>
           <input type="file" accept=".kml,.kmz" ref={fileRef} style={{ display:"none" }} onChange={importarKML} />
-
-          {/* Importar KML */}
           <button onClick={()=>fileRef.current?.click()} style={{ display:"block",width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:`${C.blue}15`,border:`1px solid ${C.blue}40`,color:C.blue,fontWeight:600,fontSize:11.5,cursor:"pointer" }}>
             📥 Importar KML
           </button>
-
-          {/* Exportar KML */}
           <button onClick={exportarKML} style={{ display:"block",width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:`${C.accent}15`,border:`1px solid ${C.accent}40`,color:C.accent,fontWeight:600,fontSize:11.5,cursor:"pointer" }}>
             📤 Exportar KML
           </button>
-
-          {/* 📄 Gerar Laudo PDF — INTEGRADO */}
           <button
             onClick={()=>gerarLaudoPDF(fazenda, dadosReais, setGerandoPDF)}
             disabled={gerandoPDF}
-            style={{ display:"flex",alignItems:"center",gap:8,width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:gerandoPDF?`${C.textDim}15`:`${C.yellow}15`,border:`1px solid ${gerandoPDF?C.textDim+"40":C.yellow+"40"}`,color:gerandoPDF?C.textDim:C.yellow,fontWeight:600,fontSize:11.5,cursor:gerandoPDF?"default":"pointer",opacity:gerandoPDF?0.7:1 }}
+            style={{ display:"flex",alignItems:"center",gap:8,width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,background:gerandoPDF?`${C.textDim}15`:`${C.yellow}15`,border:`1px solid ${gerandoPDF?C.textDim+"40":C.yellow+"40"}`,color:gerandoPDF?C.textDim:C.yellow,fontWeight:600,fontSize:11.5,cursor:gerandoPDF?"default":"pointer" }}
           >
-            {gerandoPDF
-              ? <><div style={{ width:12,height:12,border:`2px solid ${C.textDim}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0 }}/> Gerando PDF...</>
-              : "📄 Gerar Laudo PDF"
-            }
+            {gerandoPDF?<><div style={{ width:12,height:12,border:`2px solid ${C.textDim}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0 }}/> Gerando...</>:"📄 Gerar Laudo PDF"}
           </button>
-
-          {/* WhatsApp */}
-          <button onClick={()=>alert("Em breve!")} style={{ display:"block",width:"100%",marginBottom:7,padding:"8px 12px",borderRadius:8,textAlign:"left",background:`${C.accentBright}15`,border:`1px solid ${C.accentBright}40`,color:C.accentBright,fontWeight:600,fontSize:11.5,cursor:"pointer" }}>
+          <button onClick={()=>alert("Em breve!")} style={{ display:"block",width:"100%",padding:"8px 12px",borderRadius:8,textAlign:"left",background:`${C.accentBright}15`,border:`1px solid ${C.accentBright}40`,color:C.accentBright,fontWeight:600,fontSize:11.5,cursor:"pointer" }}>
             💬 Enviar WhatsApp
           </button>
-
           {kmlNome&&<div style={{ fontSize:11,color:C.accent,marginTop:4 }}>✅ KML: {kmlNome}</div>}
         </div>
       </div>
@@ -823,7 +745,7 @@ export default function MapaPage() {
             </div>
           </div>
 
-          {/* Leaflet */}
+          {/* Leaflet map */}
           <div ref={mapRef} style={{ flex:1,background:`linear-gradient(135deg,${C.bg},#0d2010)` }} />
 
           {/* Legenda */}
@@ -838,7 +760,7 @@ export default function MapaPage() {
             {kmlNome&&<div style={{ marginTop:6,fontSize:10,color:C.blue }}>📥 {kmlNome}</div>}
           </div>
 
-          {/* Score desktop */}
+          {/* Score */}
           <div className="mapa-score" style={{ position:"absolute",top:70,right:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${scoreCor}40`,borderRadius:12,padding:"12px 14px",zIndex:1000,textAlign:"center",minWidth:110 }}>
             <div style={{ fontSize:11,color:C.textMuted,marginBottom:4 }}>🤖 Score IA</div>
             <div style={{ fontSize:30,fontWeight:900,color:scoreCor,lineHeight:1 }}>{scoreValor}</div>
@@ -846,16 +768,15 @@ export default function MapaPage() {
             <div style={{ fontSize:10,color:scoreCor,marginTop:4,fontWeight:600 }}>{score?.nivel??"Baixo Risco"}</div>
           </div>
 
-          {/* Status desktop */}
+          {/* Status */}
           <div className="mapa-status" style={{ position:"absolute",top:70,left:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${C.accent}40`,borderRadius:10,padding:"10px 12px",zIndex:1000 }}>
-            <div style={{ fontSize:11,fontWeight:700,color:C.accent,marginBottom:4 }}>{dadosReais?"📡 Status Real":"✅ Status Ambiental"}</div>
-            <div style={{ fontSize:11,color:fazenda.embargo?C.red:C.textMuted }}>{fazenda.embargo?"⛔ Embargo IBAMA ativo":"⛔ Sem embargo IBAMA"}</div>
+            <div style={{ fontSize:11,fontWeight:700,color:C.accent,marginBottom:4 }}>{temDadosReais?"📡 Dados Reais":"✅ Status Ambiental"}</div>
+            <div style={{ fontSize:11,color:fazenda.embargo?C.red:C.textMuted }}>{fazenda.embargo?"⛔ Embargo IBAMA ativo":"✅ Sem embargo IBAMA"}</div>
             <div style={{ fontSize:11,color:fazenda.prodes?C.orange:C.textMuted }}>{fazenda.prodes?"🔴 Alerta PRODES ativo":"📡 Sem alerta PRODES"}</div>
-            <div style={{ fontSize:11,color:C.textMuted }}>🌱 Moratória: Conforme</div>
             {dadosReais?.sigef?.certificado&&<div style={{ fontSize:11,color:C.accent }}>🗂️ SIGEF Certificado ✅</div>}
           </div>
 
-          {/* Loading overlay */}
+          {/* Loading busca */}
           {buscando&&(
             <div style={{ position:"absolute",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,backdropFilter:"blur(4px)" }}>
               <div style={{ background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"24px 32px",textAlign:"center" }}>
@@ -866,25 +787,20 @@ export default function MapaPage() {
             </div>
           )}
 
-          {/* Loading overlay PDF */}
+          {/* Loading PDF */}
           {gerandoPDF&&(
             <div style={{ position:"absolute",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,backdropFilter:"blur(4px)" }}>
               <div style={{ background:C.card,border:`1px solid ${C.yellow}40`,borderRadius:16,padding:"28px 36px",textAlign:"center" }}>
                 <div style={{ fontSize:36,marginBottom:10 }}>📄</div>
                 <div style={{ fontSize:14,fontWeight:700,color:C.yellow,marginBottom:4 }}>Gerando Laudo PDF...</div>
                 <div style={{ fontSize:12,color:C.textMuted }}>Aguarde, montando o documento</div>
-                <div style={{ marginTop:14,width:120,height:4,background:C.border,borderRadius:2,margin:"14px auto 0",overflow:"hidden" }}>
-                  <div style={{ height:"100%",width:"60%",background:`linear-gradient(90deg,${C.yellow},${C.accent})`,borderRadius:2,animation:"spin 1s linear infinite" }}/>
-                </div>
               </div>
             </div>
           )}
         </div>
-
-        <PainelMobileInfo />
       </div>
 
-      {/* ── PAINEL DIREITO desktop ── */}
+      {/* ── PAINEL DIREITO ── */}
       <div className="mapa-painel-dir" style={{ width:230,background:C.surface,borderLeft:`1px solid ${C.border}`,padding:"16px 14px",flexShrink:0,overflowY:"auto" }}>
         {score&&<CardScore score={score}/>}
         <div style={{ fontSize:13,fontWeight:700,marginBottom:14 }}>🗂️ Camadas</div>
