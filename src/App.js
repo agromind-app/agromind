@@ -15,7 +15,6 @@ const TIPOS_BUSCA=[{id:"car",label:"CAR",icon:"📋",placeholder:"Ex: MT-5107040
 const NAV=[{section:"Principal",items:[{icon:"⊞",label:"Dashboard",id:"dashboard"},{icon:"🔍",label:"Consultar Imóvel",id:"consulta"},{icon:"🗺️",label:"Mapa Interativo",id:"mapa"},{icon:"🤖",label:"IA & Score",id:"ia"}]},{section:"Ambiental",items:[{icon:"🌿",label:"Embargos IBAMA",id:"embargos"},{icon:"📡",label:"PRODES/INPE",id:"prodes"},{icon:"💧",label:"Precipitação",id:"precipitacao"}]},{section:"Sistema",items:[{icon:"💬",label:"WhatsApp Bot",id:"whatsapp"},{icon:"💳",label:"Planos & Preços",id:"planos"},{icon:"🛡️",label:"Painel Admin",id:"admin"}]}];
 const BOTTOM_NAV=[{icon:"⊞",label:"Início",id:"dashboard"},{icon:"🗺️",label:"Mapa",id:"mapa"},{icon:"🔍",label:"Buscar",id:"consulta"},{icon:"💳",label:"Planos",id:"planos"},{icon:"🛡️",label:"Admin",id:"admin"}];
 
-// 2 créditos reais, mostra "3 grátis" na interface
 async function criarUsuarioFS(uid,email,nome){try{const ref=doc(db,"usuarios",uid);const snap=await getDoc(ref);if(snap.exists())return snap.data();const dados={uid,email,nome,plano:"gratuito",creditos:2,creditosUsados:0,totalConsultas:0,criadoEm:serverTimestamp()};await setDoc(ref,dados);return dados;}catch(e){}}
 async function descontarCreditoFS(uid,desc="Consulta"){try{const ref=doc(db,"usuarios",uid);const snap=await getDoc(ref);if(!snap.exists()||snap.data().creditos<=0)return{sucesso:false,motivo:"sem_creditos"};const d=snap.data();await updateDoc(ref,{creditos:increment(-1),creditosUsados:increment(1),totalConsultas:increment(1),ultimaConsulta:serverTimestamp()});return{sucesso:true,creditos:d.creditos-1};}catch{return{sucesso:false};}}
 
@@ -27,7 +26,6 @@ function useCredits(user){
   return{creditos,plano,loading,cor,usarCredito};
 }
 
-// ─── POPUP 1: CADASTRO (aparece quando visitante clica em qualquer ferramenta) ───
 function PopupCadastro({onFechar}){
   const[mode,setMode]=useState("register");
   const[name,setName]=useState("");const[email,setEmail]=useState("");const[pass,setPass]=useState("");const[confirm,setConfirm]=useState("");
@@ -35,62 +33,24 @@ function PopupCadastro({onFechar}){
   const errMsg=(code)=>({"auth/email-already-in-use":"E-mail já cadastrado.","auth/weak-password":"Senha fraca. Mínimo 6 caracteres.","auth/invalid-email":"E-mail inválido.","auth/invalid-credential":"E-mail ou senha incorretos.","auth/user-not-found":"E-mail não encontrado.","auth/wrong-password":"Senha incorreta.","auth/too-many-requests":"Muitas tentativas. Aguarde."}[code]||"Erro inesperado.");
   const handleRegister=async()=>{setErro("");if(!name.trim())return setErro("Digite seu nome.");if(pass!==confirm)return setErro("As senhas não coincidem.");if(pass.length<6)return setErro("Mínimo 6 caracteres.");setLoading(true);try{const cred=await createUserWithEmailAndPassword(auth,email,pass);await updateProfile(cred.user,{displayName:name.trim()});setSucesso("Conta criada! Seus 3 créditos já estão disponíveis 🎉");setTimeout(()=>onFechar(),1500);}catch(e){setErro(errMsg(e.code));}setLoading(false);};
   const handleLogin=async()=>{setErro("");setLoading(true);try{await signInWithEmailAndPassword(auth,email,pass);onFechar();}catch(e){setErro(errMsg(e.code));}setLoading(false);};
-
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.90)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:24,width:"100%",maxWidth:420,position:"relative",overflow:"hidden"}}>
         <button onClick={onFechar} style={{position:"absolute",top:14,right:14,width:30,height:30,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.bg,color:C.textMuted,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",zIndex:10}}>×</button>
-
-        {/* Header verde */}
         <div style={{background:`linear-gradient(135deg,${C.green1},#0a2412)`,padding:"28px 28px 20px",textAlign:"center"}}>
           <div style={{fontSize:40,marginBottom:8}}>🌿</div>
-          <div style={{fontSize:20,fontWeight:900,color:C.accentBright,marginBottom:4}}>
-            {mode==="register"?"Crie sua conta grátis!":"Bem-vindo de volta!"}
-          </div>
-          {mode==="register"&&(
-            <div style={{display:"inline-flex",alignItems:"center",gap:8,background:`${C.accent}20`,border:`1px solid ${C.accent}40`,borderRadius:20,padding:"6px 16px",marginTop:4}}>
-              <span style={{fontSize:16}}>🎁</span>
-              <span style={{fontSize:13,fontWeight:700,color:C.accent}}>Ganhe 3 créditos grátis ao cadastrar!</span>
-            </div>
-          )}
+          <div style={{fontSize:20,fontWeight:900,color:C.accentBright,marginBottom:4}}>{mode==="register"?"Crie sua conta grátis!":"Bem-vindo de volta!"}</div>
+          {mode==="register"&&(<div style={{display:"inline-flex",alignItems:"center",gap:8,background:`${C.accent}20`,border:`1px solid ${C.accent}40`,borderRadius:20,padding:"6px 16px",marginTop:4}}><span style={{fontSize:16}}>🎁</span><span style={{fontSize:13,fontWeight:700,color:C.accent}}>Ganhe 3 créditos grátis ao cadastrar!</span></div>)}
         </div>
-
-        {/* Form */}
         <div style={{padding:"24px 28px"}}>
           {erro&&<div style={{background:`${C.red}15`,border:`1px solid ${C.red}40`,borderRadius:8,padding:"10px 14px",fontSize:13,color:C.red,marginBottom:14}}>{erro}</div>}
           {sucesso&&<div style={{background:`${C.accent}15`,border:`1px solid ${C.accent}40`,borderRadius:8,padding:"10px 14px",fontSize:13,color:C.accentBright,marginBottom:14}}>{sucesso}</div>}
-
-          {mode==="register"&&(
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Nome completo</label>
-              <input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} placeholder="Ex: João da Silva" value={name} onChange={e=>setName(e.target.value)}/>
-            </div>
-          )}
-          <div style={{marginBottom:14}}>
-            <label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>E-mail</label>
-            <input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)}/>
-          </div>
-          <div style={{marginBottom:mode==="register"?14:20}}>
-            <label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Senha</label>
-            <input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} type="password" placeholder="Mínimo 6 caracteres" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():null)}/>
-          </div>
-          {mode==="register"&&(
-            <div style={{marginBottom:20}}>
-              <label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Confirmar senha</label>
-              <input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} type="password" placeholder="Repita a senha" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleRegister()}/>
-            </div>
-          )}
-
-          <button onClick={mode==="register"?handleRegister:handleLogin} disabled={loading} style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:loading?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:800,fontSize:15,cursor:loading?"default":"pointer"}}>
-            {loading?"Aguarde...":(mode==="register"?"Criar conta grátis 🚀":"Entrar")}
-          </button>
-
-          <div style={{textAlign:"center",marginTop:16,fontSize:13,color:C.textMuted}}>
-            {mode==="register"
-              ?<>Já tem conta? <span style={{color:C.accentBright,cursor:"pointer",fontWeight:700}} onClick={()=>{setMode("login");setErro("");}}>Entrar</span></>
-              :<>Não tem conta? <span style={{color:C.accentBright,cursor:"pointer",fontWeight:700}} onClick={()=>{setMode("register");setErro("");}}>Cadastrar grátis</span></>
-            }
-          </div>
+          {mode==="register"&&(<div style={{marginBottom:14}}><label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Nome completo</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} placeholder="Ex: João da Silva" value={name} onChange={e=>setName(e.target.value)}/></div>)}
+          <div style={{marginBottom:14}}><label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>E-mail</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)}/></div>
+          <div style={{marginBottom:mode==="register"?14:20}}><label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Senha</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} type="password" placeholder="Mínimo 6 caracteres" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():null)}/></div>
+          {mode==="register"&&(<div style={{marginBottom:20}}><label style={{fontSize:12,color:C.textMuted,marginBottom:5,display:"block",fontWeight:600}}>Confirmar senha</label><input style={{width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} type="password" placeholder="Repita a senha" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleRegister()}/></div>)}
+          <button onClick={mode==="register"?handleRegister:handleLogin} disabled={loading} style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:loading?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:800,fontSize:15,cursor:loading?"default":"pointer"}}>{loading?"Aguarde...":(mode==="register"?"Criar conta grátis 🚀":"Entrar")}</button>
+          <div style={{textAlign:"center",marginTop:16,fontSize:13,color:C.textMuted}}>{mode==="register"?<>Já tem conta? <span style={{color:C.accentBright,cursor:"pointer",fontWeight:700}} onClick={()=>{setMode("login");setErro("");}}>Entrar</span></>:<>Não tem conta? <span style={{color:C.accentBright,cursor:"pointer",fontWeight:700}} onClick={()=>{setMode("register");setErro("");}}>Cadastrar grátis</span></>}</div>
           <div style={{textAlign:"center",marginTop:12,fontSize:10,color:C.textDim}}>🔒 Dados protegidos — Firebase Google — SSL</div>
         </div>
       </div>
@@ -98,40 +58,20 @@ function PopupCadastro({onFechar}){
   );
 }
 
-// ─── POPUP 2: PLANOS (aparece quando créditos acabam) ───
 function PopupPlanos({onFechar,onVerPlanos}){
-  const planos=[
-    {id:"starter_mensal",title:"Starter",price:"49",per:"/mês",creditos:"20 consultas",features:["CAR, ITR, CCIR, GPS","Score IA básico","Mapa interativo","Laudo PDF"],featured:false},
-    {id:"pro_mensal",title:"Pro Mensal",price:"99",per:"/mês",creditos:"100 consultas",badge:"MAIS VENDIDO",features:["Tudo do Starter","IBAMA + PRODES","Score IA avançado","Chat IA com a fazenda","WhatsApp Bot"],featured:true},
-    {id:"pro_anual",title:"Pro Anual",price:"79",per:"/mês",creditos:"100 consultas",badge:"ECONOMIA 20%",features:["Tudo do Pro","Alertas automáticos","Relatórios avançados","Suporte prioritário"],featured:false},
-  ];
+  const planos=[{id:"starter_mensal",title:"Starter",price:"49",per:"/mês",creditos:"20 consultas",features:["CAR, ITR, CCIR, GPS","Score IA básico","Mapa interativo","Laudo PDF"],featured:false},{id:"pro_mensal",title:"Pro Mensal",price:"99",per:"/mês",creditos:"100 consultas",badge:"MAIS VENDIDO",features:["Tudo do Starter","IBAMA + PRODES","Score IA avançado","Chat IA com a fazenda","WhatsApp Bot"],featured:true},{id:"pro_anual",title:"Pro Anual",price:"79",per:"/mês",creditos:"100 consultas",badge:"ECONOMIA 20%",features:["Tudo do Pro","Alertas automáticos","Relatórios avançados","Suporte prioritário"],featured:false}];
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16,overflowY:"auto"}}>
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:24,width:"100%",maxWidth:700,maxHeight:"92vh",overflowY:"auto",position:"relative"}}>
         <button onClick={onFechar} style={{position:"absolute",top:14,right:14,width:30,height:30,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.bg,color:C.textMuted,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",zIndex:10}}>×</button>
-
-        {/* Header */}
         <div style={{background:`linear-gradient(135deg,${C.green1},#0a2412)`,borderRadius:"24px 24px 0 0",padding:"28px 28px 24px",textAlign:"center"}}>
           <div style={{fontSize:40,marginBottom:8}}>🔒</div>
           <div style={{fontSize:22,fontWeight:900,color:C.accentBright,marginBottom:6}}>Seus créditos acabaram!</div>
-          <div style={{fontSize:13,color:C.textMuted}}>Você adorou o AgroMind! Escolha um plano e continue consultando.</div>
+          <div style={{fontSize:13,color:C.textMuted}}>Escolha um plano e continue consultando.</div>
         </div>
-
         <div style={{padding:"24px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:20}}>
-            {planos.map((p)=>(
-              <div key={p.id} style={{background:p.featured?`linear-gradient(160deg,${C.green1},${C.card})`:C.bg,border:`1px solid ${p.featured?C.borderLight:C.border}`,borderRadius:16,padding:"20px 16px",position:"relative",boxShadow:p.featured?`0 0 30px ${C.green2}30`:"none"}}>
-                {p.badge&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:`linear-gradient(135deg,${C.accent},${C.green2})`,color:C.bg,fontSize:9,fontWeight:800,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{p.badge}</div>}
-                <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:2}}>{p.title}</div>
-                <div style={{fontSize:30,fontWeight:900,color:C.accentBright,lineHeight:1.1}}>R${p.price}</div>
-                <div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>{p.per}</div>
-                <div style={{fontSize:11,color:C.accent,fontWeight:600,marginBottom:12}}>{p.creditos} incluídas</div>
-                {p.features.map(f=>(<div key={f} style={{display:"flex",gap:6,fontSize:11,marginBottom:5,color:C.textMuted}}><span style={{color:C.accent}}>✓</span>{f}</div>))}
-                <button onClick={()=>{onFechar();onVerPlanos();}} style={{width:"100%",padding:"10px 0",borderRadius:8,border:p.featured?"none":`1px solid ${C.borderLight}`,background:p.featured?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:p.featured?C.text:C.accentBright,fontWeight:700,fontSize:12,cursor:"pointer",marginTop:14}}>
-                  {p.featured?"Assinar Agora":"Começar"}
-                </button>
-              </div>
-            ))}
+            {planos.map((p)=>(<div key={p.id} style={{background:p.featured?`linear-gradient(160deg,${C.green1},${C.card})`:C.bg,border:`1px solid ${p.featured?C.borderLight:C.border}`,borderRadius:16,padding:"20px 16px",position:"relative"}}>{p.badge&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:`linear-gradient(135deg,${C.accent},${C.green2})`,color:C.bg,fontSize:9,fontWeight:800,padding:"3px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{p.badge}</div>}<div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:2}}>{p.title}</div><div style={{fontSize:30,fontWeight:900,color:C.accentBright,lineHeight:1.1}}>R${p.price}</div><div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>{p.per}</div><div style={{fontSize:11,color:C.accent,fontWeight:600,marginBottom:12}}>{p.creditos} incluídas</div>{p.features.map(f=>(<div key={f} style={{display:"flex",gap:6,fontSize:11,marginBottom:5,color:C.textMuted}}><span style={{color:C.accent}}>✓</span>{f}</div>))}<button onClick={()=>{onFechar();onVerPlanos();}} style={{width:"100%",padding:"10px 0",borderRadius:8,border:p.featured?"none":`1px solid ${C.borderLight}`,background:p.featured?`linear-gradient(135deg,${C.green2},${C.green3})`:"transparent",color:p.featured?C.text:C.accentBright,fontWeight:700,fontSize:12,cursor:"pointer",marginTop:14}}>{p.featured?"Assinar Agora":"Começar"}</button></div>))}
           </div>
           <div style={{textAlign:"center",fontSize:11,color:C.textDim}}>💳 PIX · Cartão · Boleto — Pagamento seguro via Mercado Pago</div>
           <button onClick={onFechar} style={{display:"block",margin:"12px auto 0",padding:"8px 24px",borderRadius:10,border:`1px solid ${C.border}`,background:"transparent",color:C.textMuted,fontSize:12,cursor:"pointer"}}>Agora não</button>
@@ -149,9 +89,8 @@ function BuscaBox({onConsultar,buscando,user,onNaoCadastrado}){
 }
 
 const PERGUNTAS_RAPIDAS=["Qual o score de risco?","Tem embargo ativo?","A Reserva Legal está regular?","Pode financiar esta propriedade?","Situação ambiental geral?","Calcule o ITR estimado"];
-function ScoreGauge({score}){const cor=score>=70?C.accent:score>=40?C.yellow:C.red;const label=score>=70?"Baixo Risco":score>=40?"Risco Médio":"Alto Risco";return(<div style={{textAlign:"center",padding:"12px 0"}}><div style={{width:90,height:90,borderRadius:"50%",background:`conic-gradient(${cor} 0deg,${cor} ${(score/100)*360}deg,${C.border} ${(score/100)*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px"}}><div style={{width:68,height:68,borderRadius:"50%",background:C.card,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:20,fontWeight:900,color:cor,lineHeight:1}}>{score}</div><div style={{fontSize:9,color:C.textMuted}}>/100</div></div></div><div style={{fontSize:12,fontWeight:700,color:cor}}>{label}</div></div>);}
 
-function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCadastrado}){
+function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCadastrado,onResultado}){
   const[buscando,setBuscando]=useState(false);const[resultado,setResultado]=useState(null);const[erro,setErro]=useState(null);
   const consultar=async(tipo,val)=>{
     if(buscando)return;
@@ -170,6 +109,8 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
       const dados=await resp.json();
       if(!dados.sucesso){setErro(dados.error||"Erro na consulta.");setBuscando(false);return;}
       setResultado(dados);
+      // ✅ SALVA GLOBALMENTE para o mapa e IA usarem
+      onResultado(dados);
       if(user?.uid)await salvarConsultaFS(user.uid,dados);
     }catch{setErro("Erro de conexão. Tente novamente.");}
     setBuscando(false);
@@ -195,7 +136,10 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
         {r.cotacoes?.encontrado&&(<div style={S.card}><div style={{fontSize:13,fontWeight:700,color:C.yellow,marginBottom:12}}>Cotações CEPEA</div>{Object.entries(r.cotacoes.produtos||{}).map(([k,v])=>(<div key={k} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}`}}><div style={{fontSize:12,fontWeight:600}}>{v.nome}</div><div style={{fontSize:13,fontWeight:800,color:C.yellow}}>{v.preco?`R$ ${Number(v.preco).toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—"}</div></div>))}</div>)}
         {score?.fatores&&(<div style={S.card}><div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Análise de Risco IA</div>{score.fatores.map((f,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 10px",marginBottom:6,borderRadius:8,border:`1px solid ${f.cor}30`,background:`${f.cor}08`}}><span style={{fontSize:12,color:C.textMuted}}>{f.label}</span><span style={{fontSize:12,fontWeight:700,color:f.cor}}>{f.impacto===0?"OK":f.impacto}</span></div>))}</div>)}
       </div>
-      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><button onClick={()=>setPage("mapa")} style={{flex:1,minWidth:140,padding:"12px",borderRadius:10,background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",color:C.text,fontWeight:700,fontSize:13,cursor:"pointer"}}>Ver no Mapa</button><button onClick={()=>setPage("ia")} style={{flex:1,minWidth:140,padding:"12px",borderRadius:10,background:`linear-gradient(135deg,${C.blue},#6366f1)`,border:"none",color:C.text,fontWeight:700,fontSize:13,cursor:"pointer"}}>Consultar IA</button></div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <button onClick={()=>setPage("mapa")} style={{flex:1,minWidth:140,padding:"12px",borderRadius:10,background:`linear-gradient(135deg,${C.green2},${C.green3})`,border:"none",color:C.text,fontWeight:700,fontSize:13,cursor:"pointer"}}>Ver no Mapa</button>
+        <button onClick={()=>setPage("ia")} style={{flex:1,minWidth:140,padding:"12px",borderRadius:10,background:`linear-gradient(135deg,${C.blue},#6366f1)`,border:"none",color:C.text,fontWeight:700,fontSize:13,cursor:"pointer"}}>Consultar IA</button>
+      </div>
     </div>)}
   </div>);
 }
@@ -206,9 +150,24 @@ function ProdesPage(){const[coords,setCoords]=useState("");const[buscando,setBus
 
 function PrecipitacaoPage(){const[coords,setCoords]=useState("");const[buscando,setBuscando]=useState(false);const[resultado,setResultado]=useState(null);const[erro,setErro]=useState(null);const buscar=async()=>{if(!coords.trim()||buscando)return;const gps=coords.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);if(!gps){setErro("Use: -11.8456, -55.1987");return;}const lat=parseFloat(gps[1]);const lng=parseFloat(gps[2]);setBuscando(true);setErro(null);setResultado(null);try{const resp=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation&daily=precipitation_sum&timezone=America%2FSao_Paulo&forecast_days=14&past_days=30`,{signal:AbortSignal.timeout(10000)});if(!resp.ok)throw new Error();const data=await resp.json();const curr=data.current||{};const precipDiaria=data.daily?.precipitation_sum||[];const precipTotal30d=precipDiaria.slice(0,30).reduce((a,b)=>a+(b||0),0);setResultado({curr,precipDiaria,precipTotal30d:Number(precipTotal30d.toFixed(1)),precipMedia:Number((precipTotal30d/30).toFixed(1)),daily:data.daily,lat,lng});}catch{setErro("Não foi possível buscar dados climáticos.");}setBuscando(false);};return(<div style={{padding:"20px 16px",maxWidth:900,margin:"0 auto"}}><div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.blue}15)`,borderRadius:20,padding:"24px 20px",marginBottom:20}}><div style={{fontSize:"clamp(17px,4vw,22px)",fontWeight:800,marginBottom:4}}>Precipitação e Clima</div><div style={{color:C.textMuted,fontSize:13,marginBottom:16}}>Histórico 30 dias + previsão 14 dias</div><div style={{display:"flex",gap:8}}><input style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 14px",color:C.text,fontSize:13,outline:"none",height:42}} placeholder="GPS: -11.8456, -55.1987" value={coords} onChange={e=>setCoords(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar()}/><button onClick={buscar} disabled={buscando||!coords.trim()} style={{background:buscando||!coords.trim()?C.border:`linear-gradient(135deg,${C.blue},#2563eb)`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 20px",cursor:buscando||!coords.trim()?"default":"pointer",height:42}}>{buscando?"Buscando...":"Consultar"}</button></div>{erro&&<div style={{marginTop:12,padding:"10px 14px",background:`${C.blue}15`,border:`1px solid ${C.blue}40`,borderRadius:8,fontSize:13,color:C.blue}}>{erro}</div>}</div>{!resultado&&!buscando&&(<div style={{...S.card,textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:56,marginBottom:16}}>💧</div><div style={{fontSize:15,fontWeight:700,color:C.blue}}>Digite as coordenadas GPS acima</div></div>)}{resultado&&(<div style={{display:"flex",flexDirection:"column",gap:14}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>{[["Temperatura",`${resultado.curr.temperature_2m??'--'}°C`,C.red],["Umidade",`${resultado.curr.relative_humidity_2m??'--'}%`,C.blue],["Chuva hoje",`${resultado.curr.precipitation??0} mm`,C.blue],["Total 30d",`${resultado.precipTotal30d} mm`,C.blue],["Média/dia",`${resultado.precipMedia} mm`,C.purple]].map(([l,v,c])=>(<div key={l} style={{...S.card,padding:14,textAlign:"center"}}><div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>{l}</div><div style={{fontSize:18,fontWeight:800,color:c}}>{v}</div></div>))}</div><div style={S.card}><div style={{fontSize:14,fontWeight:700,marginBottom:14}}>Precipitação — últimos 30 dias</div><div style={{display:"flex",alignItems:"flex-end",gap:2,height:80}}>{(()=>{const dados=resultado.precipDiaria.slice(0,30);const max=Math.max(...dados,1);return dados.map((v,i)=>(<div key={i} style={{flex:1,height:`${Math.max((v/max)*100,4)}%`,background:`linear-gradient(180deg,${C.blue},${C.blue}40)`,borderRadius:"3px 3px 0 0",minHeight:3}}/>));})()}</div></div><div style={S.card}><div style={{fontSize:14,fontWeight:700,marginBottom:14}}>Previsão 14 dias</div><div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8}}>{(resultado.daily?.time||[]).slice(-14).map((d,i)=>{const idx=(resultado.daily.time.length-14)+i;const chuva=resultado.daily.precipitation_sum?.[idx]||0;const data=new Date(d+"T12:00:00").toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});return(<div key={i} style={{flex:"0 0 auto",minWidth:58,background:C.bg,border:`1px solid ${chuva>10?C.blue:C.border}`,borderRadius:10,padding:"10px 6px",textAlign:"center"}}><div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>{data}</div><div style={{fontSize:20,marginBottom:4}}>{chuva>20?"🌧️":chuva>5?"🌦️":"☀️"}</div><div style={{fontSize:11,fontWeight:700,color:C.blue}}>{chuva.toFixed(0)}mm</div></div>);})} </div></div></div>)}</div>);}
 
-const FAZENDA_MOCK={nome:"Fazenda Horizonte Verde",car:"MT-5107040-9B4D7A3E2F1C6B8A0D5E9F3C",municipio:"Sinop, MT",area:"1.284,7 ha",app:"183,4 ha",rl:"399,8 ha",embargo:false,prodes:false};
+function IAPage({usarCredito,creditos,onSemCreditos,onNaoCadastrado,user,dadosConsulta}){
+  // ✅ Usa dados reais da consulta se disponível
+  const fazendaNome = dadosConsulta?.sicar?.nome || "Imóvel Rural";
+  const fazendaMunicipio = dadosConsulta?.sicar?.municipio ? `${dadosConsulta.sicar.municipio}, ${dadosConsulta.sicar.uf}` : "—";
+  const fazendaArea = dadosConsulta?.sicar?.area || "—";
+  const score = dadosConsulta?.score?.valor ?? 78;
+  const contexto = dadosConsulta
+    ? `FAZENDA: ${fazendaNome}, ${fazendaMunicipio}, ${fazendaArea}, Score ${score}/100, CAR: ${dadosConsulta.car||"—"}, Proprietário: ${dadosConsulta.sicar?.proprietario||"—"}, IBAMA: ${dadosConsulta.ibama?.temEmbargo?"COM EMBARGO":"sem embargo"}, PRODES: ${dadosConsulta.prodes?.temAlerta?"COM ALERTA":"sem alerta"}, SIGEF: ${dadosConsulta.sigef?.situacaoLabel||"—"}`
+    : `FAZENDA: Fazenda Horizonte Verde, Sinop/MT, 1.284,7 ha, Score 78/100`;
 
-function IAPage({usarCredito,creditos,onSemCreditos,onNaoCadastrado,user}){const score=78;const[msgs,setMsgs]=useState([{role:"assistant",content:`Olá! Sou a IA do AgroMind. 🌿\n\nAnalisando: ${FAZENDA_MOCK.nome} (${FAZENDA_MOCK.municipio})\n\nO que você quer saber?`}]);const[input,setInput]=useState("");const[loadingIA,setLoadingIA]=useState(false);const bottomRef=useRef(null);useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);const enviar=async(texto)=>{const pergunta=texto||input.trim();if(!pergunta||loadingIA)return;if(!user){onNaoCadastrado();return;}setInput("");if(creditos<=0){onSemCreditos();return;}const resultado=await usarCredito(`IA: ${pergunta.substring(0,50)}`);if(resultado?.motivo==="sem_creditos"){onSemCreditos();return;}setMsgs(prev=>[...prev,{role:"user",content:pergunta}]);setLoadingIA(true);setMsgs(prev=>[...prev,{role:"assistant",content:"",loading:true}]);try{const resp=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:`Você é a IA do AgroMind. FAZENDA: ${FAZENDA_MOCK.nome}, ${FAZENDA_MOCK.municipio}, ${FAZENDA_MOCK.area}, Score ${score}/100. Responda em português, use emojis, máximo 200 palavras, sem markdown.`,messages:[...msgs.filter(m=>!m.loading).map(m=>({role:m.role,content:m.content})),{role:"user",content:pergunta}]})});const data=await resp.json();const txt=limparMarkdown(data.content?.[0]?.text||"Erro.");setMsgs(prev=>[...prev.filter(m=>!m.loading),{role:"assistant",content:txt}]);}catch{setMsgs(prev=>[...prev.filter(m=>!m.loading),{role:"assistant",content:"Erro de conexão."}]);}setLoadingIA(false);};return(<div style={{display:"flex",height:"calc(100vh - 64px)",overflow:"hidden"}}><style>{`@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1)}}`}</style><div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,background:C.surface,display:"flex",alignItems:"center",gap:10,flexShrink:0}}><div style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${C.blue},#6366f1)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🤖</div><div><div style={{fontSize:13,fontWeight:700}}>IA AgroMind</div><div style={{fontSize:10,color:C.accent}}>Online — {FAZENDA_MOCK.nome}</div></div></div><div style={{flex:1,overflowY:"auto",padding:"16px"}}>{msgs.map((m,i)=>(<div key={i} style={{display:"flex",gap:8,marginBottom:14,flexDirection:m.role==="user"?"row-reverse":"row",alignItems:"flex-start"}}><div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,background:m.role==="user"?`linear-gradient(135deg,${C.green2},${C.accent})`:`linear-gradient(135deg,${C.blue},#6366f1)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>{m.role==="user"?"👤":"🤖"}</div><div style={{maxWidth:"78%",padding:"10px 14px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",background:m.role==="user"?`linear-gradient(135deg,${C.green2},${C.green3})`:C.card,border:m.role==="user"?"none":`1px solid ${C.border}`,color:C.text,fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.content}{m.loading&&<span style={{display:"inline-flex",gap:3,marginLeft:6}}>{[0,1,2].map(i=><span key={i} style={{width:5,height:5,borderRadius:"50%",background:C.accent,animation:`pulse 1s ease-in-out ${i*0.2}s infinite`,display:"inline-block"}}/>)}</span>}</div></div>))}<div ref={bottomRef}/></div><div style={{padding:"6px 14px",borderTop:`1px solid ${C.border}`,display:"flex",gap:6,overflowX:"auto",flexShrink:0}}>{PERGUNTAS_RAPIDAS.map((p,i)=>(<button key={i} onClick={()=>enviar(p)} style={{flexShrink:0,padding:"4px 10px",borderRadius:20,border:`1px solid ${C.borderLight}`,background:`${C.green1}40`,color:C.textMuted,fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>{p}</button>))}</div><div style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`,background:C.surface,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}><textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();enviar();}}} placeholder={user?"Pergunte sobre a fazenda...":"Faça login para usar a IA"} rows={1} style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 14px",color:C.text,fontSize:13,outline:"none",resize:"none",fontFamily:"inherit",lineHeight:1.5,maxHeight:80,overflowY:"auto"}}/><button onClick={()=>enviar()} disabled={loadingIA||!input.trim()} style={{width:40,height:40,borderRadius:10,border:"none",background:loadingIA||!input.trim()?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,cursor:loadingIA||!input.trim()?"default":"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{loadingIA?"⏳":"→"}</button></div></div></div>);}
+  const[msgs,setMsgs]=useState([{role:"assistant",content:`Olá! Sou a IA do AgroMind. 🌿\n\nAnalisando: ${fazendaNome} (${fazendaMunicipio})\n\nO que você quer saber?`}]);
+  const[input,setInput]=useState("");const[loadingIA,setLoadingIA]=useState(false);const bottomRef=useRef(null);
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+  // Atualiza mensagem inicial quando dados mudam
+  useEffect(()=>{if(dadosConsulta){setMsgs([{role:"assistant",content:`Olá! Sou a IA do AgroMind. 🌿\n\nAnalisando: ${fazendaNome} (${fazendaMunicipio})\n\nO que você quer saber sobre esta propriedade?`}]);}},[dadosConsulta]);
+  const enviar=async(texto)=>{const pergunta=texto||input.trim();if(!pergunta||loadingIA)return;if(!user){onNaoCadastrado();return;}setInput("");if(creditos<=0){onSemCreditos();return;}const resultado=await usarCredito(`IA: ${pergunta.substring(0,50)}`);if(resultado?.motivo==="sem_creditos"){onSemCreditos();return;}setMsgs(prev=>[...prev,{role:"user",content:pergunta}]);setLoadingIA(true);setMsgs(prev=>[...prev,{role:"assistant",content:"",loading:true}]);try{const resp=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:`Você é a IA do AgroMind. ${contexto}. Responda em português, use emojis, máximo 200 palavras, sem markdown.`,messages:[...msgs.filter(m=>!m.loading).map(m=>({role:m.role,content:m.content})),{role:"user",content:pergunta}]})});const data=await resp.json();const txt=limparMarkdown(data.content?.[0]?.text||"Erro.");setMsgs(prev=>[...prev.filter(m=>!m.loading),{role:"assistant",content:txt}]);}catch{setMsgs(prev=>[...prev.filter(m=>!m.loading),{role:"assistant",content:"Erro de conexão."}]);}setLoadingIA(false);};
+  return(<div style={{display:"flex",height:"calc(100vh - 64px)",overflow:"hidden"}}><style>{`@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1)}}`}</style><div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}><div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,background:C.surface,display:"flex",alignItems:"center",gap:10,flexShrink:0}}><div style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${C.blue},#6366f1)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🤖</div><div><div style={{fontSize:13,fontWeight:700}}>IA AgroMind</div><div style={{fontSize:10,color:C.accent}}>Online — {fazendaNome}</div></div></div><div style={{flex:1,overflowY:"auto",padding:"16px"}}>{msgs.map((m,i)=>(<div key={i} style={{display:"flex",gap:8,marginBottom:14,flexDirection:m.role==="user"?"row-reverse":"row",alignItems:"flex-start"}}><div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,background:m.role==="user"?`linear-gradient(135deg,${C.green2},${C.accent})`:`linear-gradient(135deg,${C.blue},#6366f1)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12}}>{m.role==="user"?"👤":"🤖"}</div><div style={{maxWidth:"78%",padding:"10px 14px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",background:m.role==="user"?`linear-gradient(135deg,${C.green2},${C.green3})`:C.card,border:m.role==="user"?"none":`1px solid ${C.border}`,color:C.text,fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.content}{m.loading&&<span style={{display:"inline-flex",gap:3,marginLeft:6}}>{[0,1,2].map(i=><span key={i} style={{width:5,height:5,borderRadius:"50%",background:C.accent,animation:`pulse 1s ease-in-out ${i*0.2}s infinite`,display:"inline-block"}}/>)}</span>}</div></div>))}<div ref={bottomRef}/></div><div style={{padding:"6px 14px",borderTop:`1px solid ${C.border}`,display:"flex",gap:6,overflowX:"auto",flexShrink:0}}>{PERGUNTAS_RAPIDAS.map((p,i)=>(<button key={i} onClick={()=>enviar(p)} style={{flexShrink:0,padding:"4px 10px",borderRadius:20,border:`1px solid ${C.borderLight}`,background:`${C.green1}40`,color:C.textMuted,fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>{p}</button>))}</div><div style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`,background:C.surface,display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}><textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();enviar();}}} placeholder={user?"Pergunte sobre a fazenda...":"Faça login para usar a IA"} rows={1} style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 14px",color:C.text,fontSize:13,outline:"none",resize:"none",fontFamily:"inherit",lineHeight:1.5,maxHeight:80,overflowY:"auto"}}/><button onClick={()=>enviar()} disabled={loadingIA||!input.trim()} style={{width:40,height:40,borderRadius:10,border:"none",background:loadingIA||!input.trim()?C.border:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,cursor:loadingIA||!input.trim()?"default":"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{loadingIA?"⏳":"→"}</button></div></div></div>);
+}
 
 const precipData=[45,70,30,90,55,20,80,65,40,75,50,35,60,88,42,30,55,70,45,60,30,85,65,50,40,75,60,50,45,70];
 
@@ -273,8 +232,10 @@ export default function App(){
   const[authChecked,setAuthChecked]=useState(false);
   const[page,setPage]=useState("dashboard");
   const[drawerOpen,setDrawerOpen]=useState(false);
-  const[showCadastro,setShowCadastro]=useState(false);  // Popup 1: cadastro
-  const[showPlanos,setShowPlanos]=useState(false);       // Popup 2: planos
+  const[showCadastro,setShowCadastro]=useState(false);
+  const[showPlanos,setShowPlanos]=useState(false);
+  // ✅ Estado global da última consulta — compartilhado entre Mapa, IA e Consulta
+  const[dadosConsulta,setDadosConsulta]=useState(null);
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setAuthChecked(true);});return unsub;},[]);
   const{creditos,plano,cor,usarCredito}=useCredits(user);
@@ -285,18 +246,19 @@ export default function App(){
   const allItems=NAV.flatMap(s=>s.items);
   const isFullPage=["mapa","planos","admin","ia","consulta","embargos","prodes","precipitacao"].includes(page);
 
-  // Visitante clicou em qualquer ferramenta
   const handleNaoCadastrado=()=>setShowCadastro(true);
-  // Créditos acabaram
   const handleSemCreditos=()=>setShowPlanos(true);
 
   const initials=user?.displayName?user.displayName.split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase():null;
 
   const pageMap={
     dashboard:<Dashboard user={user} setPage={setPage} onNaoCadastrado={handleNaoCadastrado}/>,
-    consulta:<ConsultaPage user={user} usarCredito={usarCredito} creditos={creditos} onSemCreditos={handleSemCreditos} setPage={setPage} onNaoCadastrado={handleNaoCadastrado}/>,
-    mapa:<MapaPage/>,
-    ia:<IAPage user={user} usarCredito={usarCredito} creditos={creditos} onSemCreditos={handleSemCreditos} onNaoCadastrado={handleNaoCadastrado}/>,
+    // ✅ Passa onResultado para salvar dados globalmente
+    consulta:<ConsultaPage user={user} usarCredito={usarCredito} creditos={creditos} onSemCreditos={handleSemCreditos} setPage={setPage} onNaoCadastrado={handleNaoCadastrado} onResultado={setDadosConsulta}/>,
+    // ✅ Passa dadosConsulta para o mapa usar
+    mapa:<MapaPage dadosConsulta={dadosConsulta}/>,
+    // ✅ Passa dadosConsulta para a IA usar
+    ia:<IAPage user={user} usarCredito={usarCredito} creditos={creditos} onSemCreditos={handleSemCreditos} onNaoCadastrado={handleNaoCadastrado} dadosConsulta={dadosConsulta}/>,
     embargos:<EmbargoPage/>,
     prodes:<ProdesPage/>,
     precipitacao:<PrecipitacaoPage/>,
@@ -309,10 +271,7 @@ export default function App(){
     <div style={S.app} translate="no">
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{background:#0a0f0a;overflow-x:hidden;}::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-track{background:#0a0f0a;}::-webkit-scrollbar-thumb{background:#1e3a1e;border-radius:3px;}input::placeholder{color:#3d6b3d;}textarea::placeholder{color:#3d6b3d;}.agro-sidebar{position:fixed;top:0;left:0;width:240px;height:100vh;background:${C.surface};border-right:1px solid ${C.border};display:flex;flex-direction:column;z-index:100;}.agro-main{margin-left:240px;min-height:100vh;display:flex;flex-direction:column;}.agro-topbar{background:${C.surface}ee;backdrop-filter:blur(12px);border-bottom:1px solid ${C.border};padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}.agro-content{padding:24px;flex:1;}.agro-content-full{flex:1;}.agro-hamburger{display:none;}.agro-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:200;}.agro-overlay.open{display:block;}.agro-drawer{display:none;position:fixed;top:0;left:0;bottom:0;width:280px;background:${C.surface};z-index:300;flex-direction:column;transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);overflow:hidden;}.agro-drawer.open{transform:translateX(0);}.agro-bottom-nav{display:none;}@media(max-width:768px){.agro-sidebar{display:none!important;}.agro-hamburger{display:flex!important;}.agro-drawer{display:flex!important;}.agro-main{margin-left:0!important;width:100%!important;}.agro-content{padding:14px 12px 80px!important;}.agro-content-full{padding-bottom:64px;}.agro-bottom-nav{display:flex!important;position:fixed;bottom:0;left:0;right:0;background:${C.surface};border-top:1px solid ${C.border};z-index:100;height:64px;}}@supports(padding-bottom:env(safe-area-inset-bottom)){@media(max-width:768px){.agro-bottom-nav{height:calc(64px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);}}}`}</style>
 
-      {/* POPUP 1: Cadastro — aparece quando visitante clica em pesquisar */}
       {showCadastro&&<PopupCadastro onFechar={()=>setShowCadastro(false)}/>}
-
-      {/* POPUP 2: Planos — aparece quando créditos acabam */}
       {showPlanos&&<PopupPlanos onFechar={()=>setShowPlanos(false)} onVerPlanos={()=>setPage("planos")}/>}
 
       <div className={`agro-overlay ${drawerOpen?"open":""}`} onClick={()=>setDrawerOpen(false)}/>
