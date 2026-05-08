@@ -140,14 +140,14 @@ const HEADERS_BR = {
 async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
   try {
     let filtro = "";
-    if (car)               filtro = `cod_imovel='${car.toUpperCase()}'`;
-    else if (ccir)         filtro = `num_ccir='${ccir.replace(/[.\-]/g, "")}'`;
-    else if (itr)          filtro = `num_nirf='${itr.replace(/[.\-]/g, "")}'`;
+    if (car)               filtro = `cod_imovel = '${car.toUpperCase()}'`;
+    else if (ccir)         filtro = `num_ccir = '${ccir.replace(/[.\-]/g, "")}'`;
+    else if (itr)          filtro = `num_nirf = '${itr.replace(/[.\-]/g, "")}'`;
     else if (proprietario) filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
     else if (nomeFazenda)  filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
     else return null;
 
-    const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=sicar:imoveis_sicar_x&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application/json&maxFeatures=1`;
+    const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=sicar:imoveis_sicar_x&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application%2Fjson&maxFeatures=1`;
 
     const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(sicarUrl)}`, {
       signal: AbortSignal.timeout(20000),
