@@ -147,7 +147,14 @@ async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
     else if (nomeFazenda)  filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
     else return null;
 
-    const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=sicar:imoveis_sicar_x&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application%2Fjson&maxFeatures=1`;
+    // typeName por estado: sicar:sicar_imoveis_XX (ex: sicar:sicar_imoveis_ma)
+    let uf = "ma";
+    if (car) {
+      const match = car.match(/^([A-Z]{2})-/i);
+      if (match) uf = match[1].toLowerCase();
+    }
+    const typeName = `sicar:sicar_imoveis_${uf}`;
+    const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=${typeName}&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application%2Fjson&maxFeatures=1`;
 
     const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(sicarUrl)}`, {
       signal: AbortSignal.timeout(20000),
