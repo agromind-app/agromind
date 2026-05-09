@@ -137,70 +137,112 @@ const HEADERS_BR = {
 };
 
 // ─── SICAR ────────────────────────────────────────────────────────────────────
-async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
-  try {
-    let filtro = "";
-    if (car)               filtro = `cod_imovel = '${car.toUpperCase()}'`;
-    else if (ccir)         filtro = `num_ccir = '${ccir.replace(/[.\-]/g, "")}'`;
-    else if (itr)          filtro = `num_nirf = '${itr.replace(/[.\-]/g, "")}'`;
-    else if (proprietario) filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
-    else if (nomeFazenda)  filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
-    else return null;
+// Todos os estados brasileiros
+const UFS_BR = ["ac","al","am","ap","ba","ce","df","es","go","ma","mg","ms","mt","pa","pb","pe","pi","pr","rj","rn","ro","rr","rs","sc","se","sp","to"];
 
-    // typeName por estado: sicar:sicar_imoveis_XX (ex: sicar:sicar_imoveis_ma)
-    let uf = "ma";
-    if (car) {
-      const match = car.match(/^([A-Z]{2})-/i);
-      if (match) uf = match[1].toLowerCase();
-    }
-    const typeName = `sicar:sicar_imoveis_${uf}`;
-    const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=${typeName}&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application%2Fjson&maxFeatures=1`;
+async function consultarSICAR(typeName, filtro) {
+  const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=${typeName}&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application%2Fjson&maxFeatures=1`;
+  const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(sicarUrl)}`, {
+    signal: AbortSignal.timeout(22000),
+  });
+  if (!resp.ok) throw new Error(`SICAR HTTP ${resp.status}`);
+  const data = await resp.json();
+  return data.features || [];
+}
 
-    const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(sicarUrl)}`, {
-      signal: AbortSignal.timeout(20000),
-    });
-
-    if (!resp.ok) throw new Error(`SICAR HTTP ${resp.status}`);
-    const data = await resp.json();
-
-    if (!data.features || data.features.length === 0) {
-      return { encontrado: false, mensagem: "Imóvel não localizado no SICAR." };
-    }
-
-    const feat = data.features[0];
-    const props = feat.properties;
-    const geom = feat.geometry;
-
-    let latC = null, lngC = null;
-    if (geom) {
+function parsearFeatureSICAR(feat, car, ccir, itr) {
+  const props = feat.properties;
+  const geom = feat.geometry;
+  let latC = null, lngC = null;
+  if (geom) {
+    try {
       const coords = geom.type === "MultiPolygon" ? geom.coordinates[0][0] : geom.coordinates[0];
       const lats = coords.map(c => c[1]);
       const lngs = coords.map(c => c[0]);
       latC = (Math.min(...lats) + Math.max(...lats)) / 2;
       lngC = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    } catch {}
+  }
+  return {
+    encontrado: true,
+    car: props.cod_imovel || car,
+    nome: props.nom_imovel || "Imóvel Rural",
+    municipio: props.nom_municipio || props.municipio || "",
+    uf: props.sig_uf || props.uf || "",
+    area: props.num_area ? `${Number(props.num_area).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
+    areaHa: props.num_area ? Number(props.num_area) : null,
+    situacao: props.ind_status || props.status_imovel || "AT",
+    situacaoLabel: traduzirSituacao(props.ind_status || props.status_imovel),
+    app: props.num_area_app ? `${Number(props.num_area_app).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
+    rl: props.num_area_rl ? `${Number(props.num_area_rl).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
+    proprietario: props.nom_proprietario || props.proprietario || null,
+    tipo: props.des_tipo_imovel || props.tipo_imovel || "Imóvel Rural",
+    modulos: props.num_modulos_fiscais ? `${Number(props.num_modulos_fiscais).toFixed(1)} módulos fiscais` : null,
+    ccir: props.num_ccir || props.ccir || ccir || null,
+    nirf: props.num_nirf || props.nirf || itr || null,
+    geometria: geom,
+    lat: latC,
+    lng: lngC,
+  };
+}
+
+async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
+  try {
+    let filtro = "";
+    let ufDetectada = null;
+
+    if (car) {
+      // Normaliza CAR: remove pontos e converte para maiúsculas
+      const carNorm = car.toUpperCase().replace(/\./g, "-");
+      filtro = `cod_imovel = '${carNorm}'`;
+      const match = car.match(/^([A-Z]{2})-/i);
+      if (match) ufDetectada = match[1].toLowerCase();
+    } else if (ccir) {
+      filtro = `num_ccir = '${ccir.replace(/[.\-\s]/g, "")}'`;
+    } else if (itr) {
+      filtro = `num_nirf = '${itr.replace(/[.\-\s]/g, "")}'`;
+    } else if (proprietario) {
+      filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
+    } else if (nomeFazenda) {
+      filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
+    } else return null;
+
+    // 1. Tenta primeiro com o CAR original (com pontos) se for busca por CAR
+    if (car && car.includes(".")) {
+      try {
+        const filtroOriginal = `cod_imovel = '${car.toUpperCase()}'`;
+        const uf = ufDetectada || "ma";
+        const features = await consultarSICAR(`sicar:sicar_imoveis_${uf}`, filtroOriginal);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+      } catch {}
     }
 
-    return {
-      encontrado: true,
-      car: props.cod_imovel || car,
-      nome: props.nom_imovel || "Imóvel Rural",
-      municipio: props.nom_municipio || "",
-      uf: props.sig_uf || "",
-      area: props.num_area ? `${Number(props.num_area).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
-      areaHa: props.num_area ? Number(props.num_area) : null,
-      situacao: props.ind_status || "AT",
-      situacaoLabel: traduzirSituacao(props.ind_status),
-      app: props.num_area_app ? `${Number(props.num_area_app).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
-      rl: props.num_area_rl ? `${Number(props.num_area_rl).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
-      proprietario: props.nom_proprietario || null,
-      tipo: props.des_tipo_imovel || "Imóvel Rural",
-      modulos: props.num_modulos_fiscais ? `${Number(props.num_modulos_fiscais).toFixed(1)} módulos fiscais` : null,
-      ccir: props.num_ccir || ccir || null,
-      nirf: props.num_nirf || itr || null,
-      geometria: geom,
-      lat: latC,
-      lng: lngC,
-    };
+    // 2. Tenta com o estado detectado pelo prefixo do CAR
+    if (ufDetectada) {
+      try {
+        const features = await consultarSICAR(`sicar:sicar_imoveis_${ufDetectada}`, filtro);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+      } catch {}
+    }
+
+    // 3. Para busca por proprietário/fazenda/ccir/itr — tenta todos os estados em paralelo (grupos de 5)
+    if (!car) {
+      const ufsParaBuscar = UFS_BR;
+      for (let i = 0; i < ufsParaBuscar.length; i += 5) {
+        const grupo = ufsParaBuscar.slice(i, i + 5);
+        const resultados = await Promise.allSettled(
+          grupo.map(uf => consultarSICAR(`sicar:sicar_imoveis_${uf}`, filtro))
+        );
+        for (const r of resultados) {
+          if (r.status === "fulfilled" && r.value.length > 0) {
+            return parsearFeatureSICAR(r.value[0], car, ccir, itr);
+          }
+        }
+      }
+    }
+
+    return { encontrado: false, mensagem: "Imóvel não localizado no SICAR." };
+
   } catch (e) {
     console.error("[SICAR ERROR]", e.message);
     return { encontrado: false, erro: e.message };
