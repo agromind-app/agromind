@@ -163,26 +163,38 @@ function parsearFeatureSICAR(feat, car, ccir, itr) {
       lngC = (Math.min(...lngs) + Math.max(...lngs)) / 2;
     } catch {}
   }
+
+  // Suporta ambos os formatos de campos do SICAR (antigo e novo)
+  const areaVal = props.num_area || props.area || props.area_imovel || null;
+  const appVal  = props.num_area_app || props.area_app || null;
+  const rlVal   = props.num_area_rl  || props.area_rl  || null;
+  const modVal  = props.num_modulos_fiscais || props.m_fiscal || null;
+  const sitVal  = props.ind_status || props.status_imovel || "AT";
+  const condVal = props.condicao || null;
+
+  const formatarHa = (v) => v ? `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null;
+
   return {
     encontrado: true,
-    car: props.cod_imovel || car,
-    nome: props.nom_imovel || "Imóvel Rural",
-    municipio: props.nom_municipio || props.municipio || "",
-    uf: props.sig_uf || props.uf || "",
-    area: props.num_area ? `${Number(props.num_area).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
-    areaHa: props.num_area ? Number(props.num_area) : null,
-    situacao: props.ind_status || props.status_imovel || "AT",
-    situacaoLabel: traduzirSituacao(props.ind_status || props.status_imovel),
-    app: props.num_area_app ? `${Number(props.num_area_app).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
-    rl: props.num_area_rl ? `${Number(props.num_area_rl).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null,
+    car:          props.cod_imovel || car,
+    nome:         props.nom_imovel || props.nome_imovel || "Imóvel Rural",
+    municipio:    props.nom_municipio || props.municipio || "",
+    uf:           props.sig_uf || props.uf || "",
+    area:         formatarHa(areaVal),
+    areaHa:       areaVal ? Number(areaVal) : null,
+    situacao:     sitVal,
+    situacaoLabel: traduzirSituacao(sitVal),
+    condicao:     condVal,
+    app:          formatarHa(appVal),
+    rl:           formatarHa(rlVal),
     proprietario: props.nom_proprietario || props.proprietario || null,
-    tipo: props.des_tipo_imovel || props.tipo_imovel || "Imóvel Rural",
-    modulos: props.num_modulos_fiscais ? `${Number(props.num_modulos_fiscais).toFixed(1)} módulos fiscais` : null,
-    ccir: props.num_ccir || props.ccir || ccir || null,
-    nirf: props.num_nirf || props.nirf || itr || null,
-    geometria: geom,
-    lat: latC,
-    lng: lngC,
+    tipo:         props.des_tipo_imovel || props.tipo_imovel || "Imóvel Rural",
+    modulos:      modVal ? `${Number(modVal).toFixed(1)} módulos fiscais` : null,
+    ccir:         props.num_ccir || props.ccir || ccir || null,
+    nirf:         props.num_nirf || props.nirf || itr || null,
+    geometria:    geom,
+    lat:          latC,
+    lng:          lngC,
   };
 }
 
