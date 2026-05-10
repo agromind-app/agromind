@@ -92,6 +92,12 @@ const PERGUNTAS_RAPIDAS=["Qual o score de risco?","Tem embargo ativo?","A Reserv
 
 function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCadastrado,onResultado}){
   const[buscando,setBuscando]=useState(false);const[resultado,setResultado]=useState(null);const[erro,setErro]=useState(null);
+  // ✅ Escuta evento do Dashboard para pesquisar direto
+  useEffect(()=>{
+    const handler=(e)=>consultar(e.detail.tipo,e.detail.val);
+    window.addEventListener("agromind-consultar",handler);
+    return()=>window.removeEventListener("agromind-consultar",handler);
+  },[]);
   const consultar=async(tipo,val)=>{
     if(buscando)return;
     if(!user){onNaoCadastrado();return;}
@@ -105,14 +111,19 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
       else if(tipo==="ccir"){body={ccir:val};}else if(tipo==="itr"){body={itr:val};}
       else if(tipo==="endereco"){const geo=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=1&countrycodes=br`);const gd=await geo.json();if(!gd?.length){setErro("Endereço não encontrado.");setBuscando(false);return;}body={lat:parseFloat(gd[0].lat),lng:parseFloat(gd[0].lon)};}
       else if(tipo==="proprietario"){body={proprietario:val};}else if(tipo==="fazenda"){body={nomeFazenda:val};}else{body={car:val};}
-      const resp=await fetch("/api/consulta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      const dados=await resp.json();
+      const ctrl=new AbortController();
+      const tid=setTimeout(()=>ctrl.abort(),55000);
+      let resp2,dados;
+      try{resp2=await fetch("/api/consulta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:ctrl.signal});}
+      catch(e){clearTimeout(tid);setErro(e.name==="AbortError"?"SICAR demorou muito. Tente novamente.":"Erro de conexão.");setBuscando(false);return;}
+      clearTimeout(tid);
+      if(!resp2.ok){setErro(`Erro ${resp2.status}. Tente novamente em instantes.`);setBuscando(false);return;}
+      try{dados=await resp2.json();}catch{setErro("Resposta inválida.");setBuscando(false);return;}
       if(!dados.sucesso){setErro(dados.error||"Erro na consulta.");setBuscando(false);return;}
       setResultado(dados);
-      // ✅ SALVA GLOBALMENTE para o mapa e IA usarem
       onResultado(dados);
       if(user?.uid)await salvarConsultaFS(user.uid,dados);
-    }catch{setErro("Erro de conexão. Tente novamente.");}
+    }catch{setErro("Erro inesperado. Tente novamente.");}
     setBuscando(false);
   };
   const r=resultado;const score=r?.score;const scoreCor=score?.cor??C.accent;
@@ -171,7 +182,7 @@ function IAPage({usarCredito,creditos,onSemCreditos,onNaoCadastrado,user,dadosCo
 
 const precipData=[45,70,30,90,55,20,80,65,40,75,50,35,60,88,42,30,55,70,45,60,30,85,65,50,40,75,60,50,45,70];
 
-function Dashboard({user,setPage,onNaoCadastrado}){
+function Dashboard({user,setPage,onNaoCadastrado,onConsultarDireto}){
   const[historico,setHistorico]=useState([]);const[loadingHist,setLoadingHist]=useState(true);
   useEffect(()=>{if(!user?.uid){setLoadingHist(false);return;}buscarHistoricoFS(user.uid,5).then(h=>{setHistorico(h);setLoadingHist(false);});},[user]);
   const formatarData=(ts)=>{if(!ts)return"—";try{const d=ts.toDate?ts.toDate():new Date(ts);return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});}catch{return"—";}};
@@ -180,7 +191,7 @@ function Dashboard({user,setPage,onNaoCadastrado}){
       <div style={{fontSize:"clamp(17px,4vw,24px)",fontWeight:800,marginBottom:4}}>{user?`Bem-vindo, ${user.displayName?.split(" ")[0]||"Usuário"}! 👋`:"Bem-vindo ao AgroMind! 🌿"}</div>
       <div style={{color:C.textMuted,fontSize:13,marginBottom:14}}>CAR · ITR · CCIR · GPS · IBAMA · PRODES · Clima · NASA · Cotações</div>
       {!user&&<div style={{background:`linear-gradient(135deg,${C.green1}60,${C.green2}20)`,border:`1px solid ${C.borderLight}`,borderRadius:12,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><div><div style={{fontSize:13,fontWeight:700,color:C.accentBright}}>🎁 Cadastre-se e ganhe 3 créditos grátis!</div><div style={{fontSize:11,color:C.textMuted}}>Consulte fazendas, embargos, PRODES e muito mais.</div></div><button onClick={onNaoCadastrado} style={{padding:"8px 18px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>Cadastrar grátis →</button></div>}
-      <BuscaBox onConsultar={()=>setPage("consulta")} buscando={false} user={user} onNaoCadastrado={onNaoCadastrado}/>
+      <BuscaBox onConsultar={onConsultarDireto} buscando={false} user={user} onNaoCadastrado={onNaoCadastrado}/>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>{[{icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},{icon:"🌾",val:"34.291",label:"Imóveis",color:C.yellow},{icon:"🚨",val:"128",label:"Alertas",color:C.red},{icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue}].map((s,i)=>(<div key={i} style={{...S.card,display:"flex",alignItems:"center",gap:10,padding:"14px"}}><div style={{width:38,height:38,borderRadius:10,background:`${s.color}20`,border:`1px solid ${s.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div><div><div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div><div style={{fontSize:10,color:C.textMuted,marginTop:1}}>{s.label}</div></div></div>))}</div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginBottom:14}}>
@@ -252,7 +263,7 @@ export default function App(){
   const initials=user?.displayName?user.displayName.split(" ").map(n=>n[0]).slice(0,2).join("").toUpperCase():null;
 
   const pageMap={
-    dashboard:<Dashboard user={user} setPage={setPage} onNaoCadastrado={handleNaoCadastrado}/>,
+    dashboard:<Dashboard user={user} setPage={setPage} onNaoCadastrado={handleNaoCadastrado} onConsultarDireto={(tipo,val)=>{setPage("consulta");setTimeout(()=>window.dispatchEvent(new CustomEvent("agromind-consultar",{detail:{tipo,val}})),100);}}/>,
     // ✅ Passa onResultado para salvar dados globalmente
     consulta:<ConsultaPage user={user} usarCredito={usarCredito} creditos={creditos} onSemCreditos={handleSemCreditos} setPage={setPage} onNaoCadastrado={handleNaoCadastrado} onResultado={setDadosConsulta}/>,
     // ✅ Passa dadosConsulta para o mapa usar
