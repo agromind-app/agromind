@@ -2,13 +2,11 @@ import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { credential } from "firebase-admin";
 
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
 export const config = { maxDuration: 30 };
 
 const PROXY_URL = "https://agromind-proxy.agromindpro.workers.dev";
 const CACHE_DIAS = 7;
 
-// ─── FIREBASE ADMIN ───────────────────────────────────────────────────────────
 function getAdmin() {
   if (getApps().length > 0) return getApps()[0];
   return initializeApp({
@@ -25,9 +23,8 @@ function getDB() {
   return getFirestore();
 }
 
-// ─── CACHE ────────────────────────────────────────────────────────────────────
 function chaveCache(body) {
-  if (body.car)          return `car_${body.car.toUpperCase().replace(/\s/g, "")}`;
+  if (body.car)          return `car_${body.car.toUpperCase().replace(/[\s\.]/g, "")}`;
   if (body.ccir)         return `ccir_${body.ccir.replace(/[.\-\s]/g, "")}`;
   if (body.itr)          return `itr_${body.itr.replace(/[.\-\s]/g, "")}`;
   if (body.proprietario) return `prop_${body.proprietario.trim().toLowerCase()}`;
@@ -53,15 +50,10 @@ async function lerCache(chave) {
 async function salvarCache(chave, resultado) {
   try {
     const db = getDB();
-    await db.collection("cache_car").doc(chave).set({
-      resultado,
-      salvoEm: new Date(),
-      chave,
-    });
-  } catch { /* falha silenciosa */ }
+    await db.collection("cache_car").doc(chave).set({ resultado, salvoEm: new Date(), chave });
+  } catch {}
 }
 
-// ─── HANDLER PRINCIPAL ───────────────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -76,7 +68,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ sucesso: false, error: "Informe CAR, CCIR, ITR, GPS ou outro critério de busca." });
     }
 
-    // ── Verifica cache primeiro ──
     const chave = chaveCache(req.body);
     if (chave) {
       const cached = await lerCache(chave);
@@ -86,7 +77,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Busca dados reais ──
+    // ✅ APENAS SICAR + SIGEF aqui — IBAMA/PRODES/Clima/NASA/Cotações ficam no frontend
     const [sicar, sigef] = await Promise.all([
       buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }),
       buscarSIGEF({ car, ccir }),
@@ -95,25 +86,18 @@ export default async function handler(req, res) {
     const coordLat = lat || sicar?.lat || sigef?.lat || null;
     const coordLng = lng || sicar?.lng || sigef?.lng || null;
 
-    const [ibama, prodes, clima, nasa, cotacoes] = await Promise.all([
-      buscarIBAMA(car || sicar?.car || ccir),
-      buscarPRODES(coordLat, coordLng),
-      buscarClima(coordLat, coordLng),
-      buscarNASA(coordLat, coordLng),
-      buscarCotacoes(),
-    ]);
-
-    const score = calcularScore({ sicar, ibama, prodes, sigef });
+    const score = calcularScore({ sicar, sigef });
 
     const resultado = {
       sucesso: true,
       car: car || sicar?.car || null,
       coordenadas: { lat: coordLat, lng: coordLng },
-      sicar, ibama, prodes, sigef, clima, nasa, cotacoes, score,
+      sicar,
+      sigef,
+      score,
       atualizadoEm: new Date().toISOString(),
     };
 
-    // ── Salva no cache ──
     if (chave && sicar?.encontrado) {
       await salvarCache(chave, resultado);
       console.log(`[CACHE SAVED] ${chave}`);
@@ -127,17 +111,14 @@ export default async function handler(req, res) {
   }
 }
 
-// ─── HEADERS ──────────────────────────────────────────────────────────────────
 const HEADERS_BR = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
   "Accept": "application/json, text/plain, */*",
   "Accept-Language": "pt-BR,pt;q=0.9",
   "Origin": "https://www.car.gov.br",
   "Referer": "https://www.car.gov.br/publico/imoveis/index",
 };
 
-// ─── SICAR ────────────────────────────────────────────────────────────────────
-// Todos os estados brasileiros
 const UFS_BR = ["ac","al","am","ap","ba","ce","df","es","go","ma","mg","ms","mt","pa","pb","pe","pi","pr","rj","rn","ro","rr","rs","sc","se","sp","to"];
 
 async function consultarSICAR(typeName, filtro) {
@@ -163,17 +144,12 @@ function parsearFeatureSICAR(feat, car, ccir, itr) {
       lngC = (Math.min(...lngs) + Math.max(...lngs)) / 2;
     } catch {}
   }
-
-  // Suporta ambos os formatos de campos do SICAR (antigo e novo)
   const areaVal = props.num_area || props.area || props.area_imovel || null;
   const appVal  = props.num_area_app || props.area_app || null;
   const rlVal   = props.num_area_rl  || props.area_rl  || null;
   const modVal  = props.num_modulos_fiscais || props.m_fiscal || null;
   const sitVal  = props.ind_status || props.status_imovel || "AT";
-  const condVal = props.condicao || null;
-
   const formatarHa = (v) => v ? `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null;
-
   return {
     encontrado: true,
     car:          props.cod_imovel || car,
@@ -184,7 +160,7 @@ function parsearFeatureSICAR(feat, car, ccir, itr) {
     areaHa:       areaVal ? Number(areaVal) : null,
     situacao:     sitVal,
     situacaoLabel: traduzirSituacao(sitVal),
-    condicao:     condVal,
+    condicao:     props.condicao || null,
     app:          formatarHa(appVal),
     rl:           formatarHa(rlVal),
     proprietario: props.nom_proprietario || props.proprietario || null,
@@ -202,9 +178,7 @@ async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
   try {
     let filtro = "";
     let ufDetectada = null;
-
     if (car) {
-      // Normaliza CAR: remove pontos e converte para maiúsculas
       const carNorm = car.toUpperCase().replace(/\./g, "-");
       filtro = `cod_imovel = '${carNorm}'`;
       const match = car.match(/^([A-Z]{2})-/i);
@@ -219,7 +193,6 @@ async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
       filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
     } else return null;
 
-    // 1. Tenta primeiro com o CAR original (com pontos) se for busca por CAR
     if (car && car.includes(".")) {
       try {
         const filtroOriginal = `cod_imovel = '${car.toUpperCase()}'`;
@@ -229,32 +202,34 @@ async function buscarSICAR({ car, ccir, itr, proprietario, nomeFazenda }) {
       } catch {}
     }
 
-    // 2. Tenta com o estado detectado pelo prefixo do CAR
     if (ufDetectada) {
       try {
         const features = await consultarSICAR(`sicar:sicar_imoveis_${ufDetectada}`, filtro);
         if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
       } catch {}
+      try {
+        const carBase = car?.toUpperCase().replace(/\./g, "-").split("-").slice(0, 2).join("-");
+        if (carBase) {
+          const features = await consultarSICAR(`sicar:sicar_imoveis_${ufDetectada}`, `cod_imovel ILIKE '${carBase}%'`);
+          if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+        }
+      } catch {}
     }
 
-    // 3. Para busca por proprietário/fazenda/ccir/itr — tenta todos os estados em paralelo (grupos de 5)
     if (!car) {
-      const ufsParaBuscar = UFS_BR;
-      for (let i = 0; i < ufsParaBuscar.length; i += 5) {
-        const grupo = ufsParaBuscar.slice(i, i + 5);
+      for (let i = 0; i < UFS_BR.length; i += 5) {
+        const grupo = UFS_BR.slice(i, i + 5);
         const resultados = await Promise.allSettled(
           grupo.map(uf => consultarSICAR(`sicar:sicar_imoveis_${uf}`, filtro))
         );
         for (const r of resultados) {
-          if (r.status === "fulfilled" && r.value.length > 0) {
+          if (r.status === "fulfilled" && r.value.length > 0)
             return parsearFeatureSICAR(r.value[0], car, ccir, itr);
-          }
         }
       }
     }
 
     return { encontrado: false, mensagem: "Imóvel não localizado no SICAR." };
-
   } catch (e) {
     console.error("[SICAR ERROR]", e.message);
     return { encontrado: false, erro: e.message };
@@ -265,65 +240,6 @@ function traduzirSituacao(cod) {
   return { AT: "Ativo", CA: "Cancelado", SU: "Suspenso", PE: "Pendente", AN: "Análise" }[cod] || cod || "Desconhecido";
 }
 
-// ─── IBAMA ────────────────────────────────────────────────────────────────────
-async function buscarIBAMA(identificador) {
-  if (!identificador) return { encontrado: false, temEmbargo: false, totalEmbargos: 0, embargos: [] };
-  try {
-    const url = `https://servicos.ibama.gov.br/phpesp/public/embargo/consultarEmbargoPublico.php?num_car=${encodeURIComponent(identificador)}&formato=json`;
-    const resp = await fetch(url, { headers: HEADERS_BR, signal: AbortSignal.timeout(8000) });
-    if (!resp.ok) throw new Error(`IBAMA HTTP ${resp.status}`);
-    const data = await resp.json();
-    const embargos = Array.isArray(data) ? data : (data.data || data.result || []);
-    return {
-      encontrado: true,
-      temEmbargo: embargos.length > 0,
-      totalEmbargos: embargos.length,
-      embargos: embargos.slice(0, 5).map(e => ({
-        numero: e.num_auto_infracao || e.numero,
-        data: e.dat_embargo || e.data,
-        tipo: e.des_tipo_infracao || e.tipo,
-        area: e.num_area_embargada ? `${e.num_area_embargada} ha` : null,
-        status: e.des_situacao || "Ativo",
-        municipio: e.nom_municipio,
-        uf: e.sig_uf,
-      })),
-    };
-  } catch (e) {
-    return { encontrado: false, temEmbargo: false, totalEmbargos: 0, embargos: [], erro: e.message };
-  }
-}
-
-// ─── PRODES ───────────────────────────────────────────────────────────────────
-async function buscarPRODES(lat, lng) {
-  if (!lat || !lng) return { encontrado: false, temAlerta: false, totalAlertas: 0, alertas: [] };
-  try {
-    const buffer = 0.05;
-    const bbox = `${lng - buffer},${lat - buffer},${lng + buffer},${lat + buffer}`;
-    const url = `https://terrabrasilis.dpi.inpe.br/geoserver/deter-amz/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=deter-amz:deter_public&CQL_FILTER=BBOX(geom,${bbox})&outputFormat=application/json&maxFeatures=10`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!resp.ok) throw new Error(`PRODES HTTP ${resp.status}`);
-    const data = await resp.json();
-    const alertas = data.features || [];
-    const areaTotal = alertas.reduce((acc, f) => acc + (f.properties?.areakm2 || 0), 0);
-    return {
-      encontrado: true,
-      temAlerta: alertas.length > 0,
-      totalAlertas: alertas.length,
-      areaDesmatadaKm2: Number(areaTotal.toFixed(2)),
-      alertas: alertas.slice(0, 5).map(f => ({
-        classname: f.properties?.classname || "Desmatamento",
-        data: f.properties?.view_date,
-        areaKm2: f.properties?.areakm2,
-        municipio: f.properties?.municipio,
-        uf: f.properties?.uf,
-      })),
-    };
-  } catch (e) {
-    return { encontrado: false, temAlerta: false, totalAlertas: 0, alertas: [], erro: e.message };
-  }
-}
-
-// ─── SIGEF ────────────────────────────────────────────────────────────────────
 async function buscarSIGEF({ car, ccir }) {
   const q = car || ccir;
   if (!q) return null;
@@ -333,7 +249,7 @@ async function buscarSIGEF({ car, ccir }) {
     if (!resp.ok) throw new Error(`SIGEF HTTP ${resp.status}`);
     const data = await resp.json();
     const features = data.features || [];
-    if (features.length === 0) return { encontrado: false, certificado: false, mensagem: "Não localizado no SIGEF/INCRA" };
+    if (features.length === 0) return { encontrado: false, certificado: false };
     const props = features[0].properties;
     const geom = features[0].geometry;
     let lat = null, lng = null;
@@ -344,7 +260,7 @@ async function buscarSIGEF({ car, ccir }) {
         const lngs = coords.map(c => c[0]);
         lat = (Math.min(...lats) + Math.max(...lats)) / 2;
         lng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-      } catch { }
+      } catch {}
     }
     return {
       encontrado: true,
@@ -365,111 +281,9 @@ async function buscarSIGEF({ car, ccir }) {
   }
 }
 
-// ─── CLIMA ────────────────────────────────────────────────────────────────────
-async function buscarClima(lat, lng) {
-  if (!lat || !lng) return { encontrado: false, erro: "Coordenadas não disponíveis" };
-  try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America%2FSao_Paulo&forecast_days=7&past_days=30`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!resp.ok) throw new Error(`Open-Meteo HTTP ${resp.status}`);
-    const data = await resp.json();
-    const curr = data.current || {};
-    const daily = data.daily || {};
-    const precipDiaria = (daily.precipitation_sum || []).slice(-30);
-    const precipTotal30d = precipDiaria.reduce((a, b) => a + (b || 0), 0);
-    return {
-      encontrado: true,
-      atual: {
-        temperatura: curr.temperature_2m,
-        umidade: curr.relative_humidity_2m,
-        vento: curr.wind_speed_10m,
-        precipitacao: curr.precipitation,
-        descricao: descricaoClima(curr.weather_code),
-      },
-      previsao7dias: (daily.time || []).slice(-7).map((d, i) => ({
-        data: d,
-        dataFormatada: new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-        tempMax: daily.temperature_2m_max?.[i],
-        tempMin: daily.temperature_2m_min?.[i],
-        chuva: daily.precipitation_sum?.[i] || 0,
-      })),
-      precipitacao30d: precipDiaria,
-      precipTotal30d: Number(precipTotal30d.toFixed(1)),
-    };
-  } catch (e) {
-    return { encontrado: false, erro: e.message };
-  }
-}
-
-function descricaoClima(code) {
-  if (code === 0) return "☀️ Céu limpo";
-  if (code <= 3)  return "🌤️ Parcialmente nublado";
-  if (code <= 48) return "☁️ Nublado";
-  if (code <= 67) return "🌧️ Chuva";
-  if (code <= 77) return "❄️ Neve";
-  if (code <= 82) return "🌦️ Chuviscos";
-  if (code <= 99) return "⛈️ Tempestade";
-  return "🌡️ --";
-}
-
-// ─── NASA ─────────────────────────────────────────────────────────────────────
-async function buscarNASA(lat, lng) {
-  if (!lat || !lng) return { encontrado: false, erro: "Coordenadas não disponíveis" };
-  try {
-    const hoje = new Date();
-    const fim = hoje.toISOString().slice(0, 10).replace(/-/g, "");
-    const inicio = new Date(hoje - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10).replace(/-/g, "");
-    const url = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN,T2M,PRECTOTCORR,RH2M,WS2M&community=AG&longitude=${lng}&latitude=${lat}&start=${inicio}&end=${fim}&format=JSON`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(12000) });
-    if (!resp.ok) throw new Error(`NASA HTTP ${resp.status}`);
-    const data = await resp.json();
-    const prop = data.properties?.parameter || {};
-    const datas = Object.keys(prop.T2M || {}).slice(-7);
-    const media = (obj) => {
-      const vals = datas.map(d => obj[d]).filter(v => v !== undefined && v !== -999);
-      return vals.length ? Number((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)) : null;
-    };
-    return {
-      encontrado: true,
-      radiacaoSolar: media(prop.ALLSKY_SFC_SW_DWN),
-      temperaturaMedia: media(prop.T2M),
-      precipitacaoMedia: media(prop.PRECTOTCORR),
-      umidadeRelativa: media(prop.RH2M),
-      velocidadeVento: media(prop.WS2M),
-    };
-  } catch (e) {
-    return { encontrado: false, erro: e.message };
-  }
-}
-
-// ─── COTAÇÕES ─────────────────────────────────────────────────────────────────
-async function buscarCotacoes() {
-  try {
-    const resp = await fetch("https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL", { signal: AbortSignal.timeout(5000) });
-    const cambio = resp.ok ? await resp.json() : {};
-    const usd = cambio.USDBRL?.bid ? Number(cambio.USDBRL.bid) : null;
-    return {
-      encontrado: true,
-      atualizadoEm: new Date().toLocaleDateString("pt-BR"),
-      dolarHoje: usd,
-      produtos: {
-        soja:    { nome: "🌱 Soja",      preco: 142.50, unidade: "R$/sc 60kg", variacao: +1.2 },
-        milho:   { nome: "🌽 Milho",     preco: 68.40,  unidade: "R$/sc 60kg", variacao: -0.8 },
-        boi:     { nome: "🐄 Boi Gordo", preco: 310.50, unidade: "R$/@",       variacao: +0.5 },
-        cafe:    { nome: "☕ Café",      preco: 1420.0, unidade: "R$/sc 60kg", variacao: +2.1 },
-        algodao: { nome: "🌿 Algodão",   preco: 112.30, unidade: "R$/@ pluma", variacao: -0.3 },
-      },
-    };
-  } catch (e) {
-    return { encontrado: false, erro: e.message };
-  }
-}
-
-// ─── SCORE ────────────────────────────────────────────────────────────────────
-function calcularScore({ sicar, ibama, prodes, sigef }) {
+function calcularScore({ sicar, sigef, ibama = null, prodes = null }) {
   let score = 100;
   const fatores = [];
-
   if (!sicar?.encontrado) {
     score -= 30;
     fatores.push({ label: "CAR não localizado", impacto: -30, cor: "#ef4444" });
@@ -479,30 +293,26 @@ function calcularScore({ sicar, ibama, prodes, sigef }) {
   } else {
     fatores.push({ label: "CAR Ativo e Regular", impacto: 0, cor: "#22c55e" });
   }
-
   if (ibama?.temEmbargo) {
     const p = Math.min(ibama.totalEmbargos * 15, 40);
     score -= p;
     fatores.push({ label: `${ibama.totalEmbargos} embargo(s) IBAMA`, impacto: -p, cor: "#ef4444" });
   } else {
-    fatores.push({ label: "Sem embargos IBAMA", impacto: 0, cor: "#22c55e" });
+    fatores.push({ label: "IBAMA pendente verificação", impacto: 0, cor: "#6b9e6b" });
   }
-
   if (prodes?.temAlerta) {
     const p = Math.min(prodes.totalAlertas * 10, 30);
     score -= p;
     fatores.push({ label: `${prodes.totalAlertas} alerta(s) PRODES`, impacto: -p, cor: "#f97316" });
   } else {
-    fatores.push({ label: "Sem alertas PRODES", impacto: 0, cor: "#22c55e" });
+    fatores.push({ label: "PRODES pendente verificação", impacto: 0, cor: "#6b9e6b" });
   }
-
   if (sigef?.certificado) {
     fatores.push({ label: "SIGEF Certificado", impacto: 0, cor: "#22c55e" });
   } else if (sigef?.encontrado) {
     score -= 10;
     fatores.push({ label: "SIGEF não certificado", impacto: -10, cor: "#fbbf24" });
   }
-
   return {
     valor: Math.max(0, Math.min(100, score)),
     nivel: score >= 70 ? "Baixo Risco" : score >= 40 ? "Risco Médio" : "Alto Risco",
