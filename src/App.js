@@ -7,16 +7,149 @@ import MapaPage from "./mapapage";
 const C={bg:"#0a0f0a",surface:"#0f1a0f",card:"#111d11",border:"#1e3a1e",borderLight:"#2a4f2a",green1:"#0d5c2e",green2:"#12803f",green3:"#16a34a",accent:"#22c55e",accentBright:"#4ade80",text:"#e8f5e9",textMuted:"#6b9e6b",textDim:"#3d6b3d",yellow:"#fbbf24",red:"#ef4444",orange:"#f97316",blue:"#3b82f6",purple:"#a78bfa"};
 const S={app:{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"},chip:(c)=>({display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:20,background:`${c}20`,color:c,border:`1px solid ${c}30`}),card:{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px"},chartBar:(p,c)=>({height:"100%",width:`${p}%`,background:`linear-gradient(90deg,${c}80,${c})`,borderRadius:3}),scoreRing:{width:110,height:110,borderRadius:"50%",background:`conic-gradient(${C.accent} 0deg,${C.accent} ${0.78*360}deg,${C.border} ${0.78*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px"},scoreInner:{width:82,height:82,borderRadius:"50%",background:C.card,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"},precipBar:{display:"flex",alignItems:"flex-end",gap:3,height:70,marginBottom:6},precipCol:(h)=>({flex:1,height:`${h}%`,background:`linear-gradient(180deg,${C.blue}90,${C.blue}40)`,borderRadius:"3px 3px 0 0",minHeight:3}),tableTh:{padding:"10px",fontSize:10,fontWeight:700,color:C.textMuted,letterSpacing:"0.5px",textTransform:"uppercase",textAlign:"left"},tableTd:{padding:"10px",fontSize:12,borderBottom:`1px solid ${C.border}`,color:C.text}};
 
+// ─── CLOUDFLARE PROXY (sem timeout 504) ──────────────────────────
+const PROXY_URL = "https://agromind-proxy.agromindpro.workers.dev";
+const UFS_BR = ["ac","al","am","ap","ba","ce","df","es","go","ma","mg","ms","mt","pa","pb","pe","pi","pr","rj","rn","ro","rr","rs","sc","se","sp","to"];
+
 function limparMarkdown(t){if(!t)return t;return t.replace(/\*\*(.+?)\*\*/g,"$1").replace(/\*(.+?)\*/g,"$1").replace(/#{1,6}\s+/g,"").replace(/`(.+?)`/g,"$1").trim();}
 async function salvarConsultaFS(uid,dados){try{await addDoc(collection(db,"usuarios",uid,"historico"),{nome:dados.sicar?.nome||dados.car||"Imóvel Rural",car:dados.car||dados.sicar?.car||"—",municipio:dados.sicar?.municipio?`${dados.sicar.municipio}/${dados.sicar.uf}`:"—",status:dados.ibama?.temEmbargo?"embargo":dados.prodes?.temAlerta?"alerta":"ok",score:dados.score?.valor??0,dadosCompletos:JSON.stringify(dados),criadoEm:serverTimestamp()});}catch(e){}}
 async function buscarHistoricoFS(uid,qtd=5){try{const q=query(collection(db,"usuarios",uid,"historico"),orderBy("criadoEm","desc"),limit(qtd));const snap=await getDocs(q);return snap.docs.map(d=>({id:d.id,...d.data()}));}catch{return[];}}
 
-// ✅ APIs extras buscadas direto do browser — sem passar pelo Vercel — sem 504
+// ─── SICAR DIRETO NO FRONTEND VIA CLOUDFLARE ─────────────────────
+async function consultarSICARFrontend(typeName, filtro) {
+  const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=${typeName}&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application%2Fjson&maxFeatures=1`;
+  const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(sicarUrl)}`);
+  if (!resp.ok) throw new Error(`SICAR HTTP ${resp.status}`);
+  const data = await resp.json();
+  return data.features || [];
+}
+
+function parsearFeatureSICAR(feat, car, ccir, itr) {
+  const props = feat.properties, geom = feat.geometry;
+  let latC = null, lngC = null;
+  if (geom) {
+    try {
+      const coords = geom.type === "MultiPolygon" ? geom.coordinates[0][0] : geom.coordinates[0];
+      const lats = coords.map(c => c[1]), lngs = coords.map(c => c[0]);
+      latC = (Math.min(...lats) + Math.max(...lats)) / 2;
+      lngC = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    } catch {}
+  }
+  const areaVal = props.num_area || props.area || props.area_imovel || null;
+  const appVal  = props.num_area_app || props.area_app || null;
+  const rlVal   = props.num_area_rl  || props.area_rl  || null;
+  const modVal  = props.num_modulos_fiscais || props.m_fiscal || null;
+  const sitVal  = props.ind_status || props.status_imovel || "AT";
+  const formatarHa = (v) => v ? `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ha` : null;
+  return {
+    encontrado: true,
+    car: props.cod_imovel || car,
+    nome: props.nom_imovel || props.nome_imovel || "Imóvel Rural",
+    municipio: props.nom_municipio || props.municipio || "",
+    uf: props.sig_uf || props.uf || "",
+    area: formatarHa(areaVal), areaHa: areaVal ? Number(areaVal) : null,
+    situacao: sitVal, situacaoLabel: traduzirSituacao(sitVal),
+    condicao: props.condicao || null,
+    app: formatarHa(appVal), rl: formatarHa(rlVal),
+    proprietario: props.nom_proprietario || props.proprietario || null,
+    tipo: props.des_tipo_imovel || props.tipo_imovel || "Imóvel Rural",
+    modulos: modVal ? `${Number(modVal).toFixed(1)} módulos fiscais` : null,
+    ccir: props.num_ccir || props.ccir || ccir || null,
+    nirf: props.num_nirf || props.nirf || itr || null,
+    geometria: geom, lat: latC, lng: lngC,
+  };
+}
+
+function traduzirSituacao(cod) {
+  return { AT:"Ativo", CA:"Cancelado", SU:"Suspenso", PE:"Pendente", AN:"Análise" }[cod] || cod || "Desconhecido";
+}
+
+async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, lat, lng }) {
+  try {
+    // Busca por GPS — retorna só coordenadas
+    if (!car && !ccir && !itr && !proprietario && !nomeFazenda) return null;
+
+    let filtro = "", ufDetectada = null;
+    if (car) {
+      const carNorm = car.toUpperCase().replace(/\./g, "-");
+      filtro = `cod_imovel = '${carNorm}'`;
+      const match = car.match(/^([A-Z]{2})-/i);
+      if (match) ufDetectada = match[1].toLowerCase();
+    } else if (ccir) { filtro = `num_ccir = '${ccir.replace(/[.\-\s]/g,"")}'`;
+    } else if (itr)  { filtro = `num_nirf = '${itr.replace(/[.\-\s]/g,"")}'`;
+    } else if (proprietario) { filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
+    } else if (nomeFazenda)  { filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
+    } else return null;
+
+    // 1. Tenta CAR com pontos no formato original
+    if (car && car.includes(".")) {
+      try {
+        const uf = ufDetectada || "ma";
+        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, `cod_imovel = '${car.toUpperCase()}'`);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+      } catch {}
+    }
+
+    // 2. Tenta com estado detectado pelo prefixo do CAR
+    if (ufDetectada) {
+      try {
+        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, filtro);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+      } catch {}
+      // 2b. ILIKE para variações
+      try {
+        const carBase = car?.toUpperCase().replace(/\./g,"-").split("-").slice(0,2).join("-");
+        if (carBase) {
+          const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, `cod_imovel ILIKE '${carBase}%'`);
+          if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+        }
+      } catch {}
+    }
+
+    // 3. Todos os estados (ccir/itr/proprietario/fazenda)
+    if (!car) {
+      for (let i = 0; i < UFS_BR.length; i += 5) {
+        const grupo = UFS_BR.slice(i, i + 5);
+        const resultados = await Promise.allSettled(grupo.map(uf => consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro)));
+        for (const r of resultados) {
+          if (r.status === "fulfilled" && r.value.length > 0) return parsearFeatureSICAR(r.value[0], car, ccir, itr);
+        }
+      }
+    }
+    return { encontrado: false, mensagem: "Imóvel não localizado no SICAR." };
+  } catch (e) { return { encontrado: false, erro: e.message }; }
+}
+
+async function buscarSIGEFFrontend({ car, ccir }) {
+  const q = car || ccir; if (!q) return null;
+  try {
+    const resp = await fetch(`https://sigef.incra.gov.br/geo/parcela/exportar/geojson/?q=${encodeURIComponent(q)}`);
+    if (!resp.ok) throw new Error();
+    const data = await resp.json();
+    const features = data.features || [];
+    if (features.length === 0) return { encontrado: false, certificado: false };
+    const props = features[0].properties, geom = features[0].geometry;
+    let lat = null, lng = null;
+    if (geom?.coordinates) {
+      try {
+        const coords = geom.type === "MultiPolygon" ? geom.coordinates[0][0] : geom.coordinates[0];
+        const lats = coords.map(c => c[1]), lngs = coords.map(c => c[0]);
+        lat = (Math.min(...lats)+Math.max(...lats))/2; lng = (Math.min(...lngs)+Math.max(...lngs))/2;
+      } catch {}
+    }
+    return { encontrado:true, certificado:props.situacao==="CE", situacao:props.situacao,
+      situacaoLabel:props.situacao==="CE"?"Certificado":props.situacao==="AT"?"Em análise":props.situacao||"Desconhecido",
+      denominacao:props.denominacao, area:props.area_registrada?`${Number(props.area_registrada).toLocaleString("pt-BR",{maximumFractionDigits:1})} ha`:null,
+      municipio:props.municipio_localizado, uf:props.uf, ccir:props.numero_ccir||ccir||null,
+      codigoIncra:props.codigo_imovel||null, geometria:geom, lat, lng };
+  } catch { return { encontrado:false, certificado:false }; }
+}
+
+// ─── APIs EXTRAS NO FRONTEND ──────────────────────────────────────
 async function buscarIBAMAFrontend(car){
   if(!car)return{encontrado:false,temEmbargo:false,totalEmbargos:0,embargos:[]};
   try{
-    const url=`https://servicos.ibama.gov.br/phpesp/public/embargo/consultarEmbargoPublico.php?num_car=${encodeURIComponent(car)}&formato=json`;
-    const resp=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    const resp=await fetch(`https://servicos.ibama.gov.br/phpesp/public/embargo/consultarEmbargoPublico.php?num_car=${encodeURIComponent(car)}&formato=json`,{signal:AbortSignal.timeout(8000)});
     if(!resp.ok)throw new Error();
     const data=await resp.json();
     const embargos=Array.isArray(data)?data:(data.data||data.result||[]);
@@ -27,10 +160,8 @@ async function buscarIBAMAFrontend(car){
 async function buscarPRODESFrontend(lat,lng){
   if(!lat||!lng)return{encontrado:false,temAlerta:false,totalAlertas:0,alertas:[]};
   try{
-    const buffer=0.05;
-    const bbox=`${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
-    const url=`https://terrabrasilis.dpi.inpe.br/geoserver/deter-amz/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=deter-amz:deter_public&CQL_FILTER=BBOX(geom,${bbox})&outputFormat=application/json&maxFeatures=10`;
-    const resp=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    const buffer=0.05,bbox=`${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
+    const resp=await fetch(`https://terrabrasilis.dpi.inpe.br/geoserver/deter-amz/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=deter-amz:deter_public&CQL_FILTER=BBOX(geom,${bbox})&outputFormat=application/json&maxFeatures=10`,{signal:AbortSignal.timeout(8000)});
     if(!resp.ok)throw new Error();
     const data=await resp.json();
     const alertas=data.features||[];
@@ -42,14 +173,13 @@ async function buscarPRODESFrontend(lat,lng){
 async function buscarClimaFrontend(lat,lng){
   if(!lat||!lng)return{encontrado:false};
   try{
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America%2FSao_Paulo&forecast_days=7&past_days=30`;
-    const resp=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    const resp=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=America%2FSao_Paulo&forecast_days=7&past_days=30`,{signal:AbortSignal.timeout(8000)});
     if(!resp.ok)throw new Error();
     const data=await resp.json();
-    const curr=data.current||{};const daily=data.daily||{};
+    const curr=data.current||{},daily=data.daily||{};
     const precipDiaria=(daily.precipitation_sum||[]).slice(-30);
     const precipTotal30d=precipDiaria.reduce((a,b)=>a+(b||0),0);
-    const desc=(code)=>{if(code===0)return"☀️ Céu limpo";if(code<=3)return"🌤️ Parcialmente nublado";if(code<=48)return"☁️ Nublado";if(code<=67)return"🌧️ Chuva";if(code<=99)return"⛈️ Tempestade";return"🌡️ --";};
+    const desc=(code)=>{if(code===0)return"☀️ Céu limpo";if(code<=3)return"🌤️ Nublado";if(code<=67)return"🌧️ Chuva";if(code<=99)return"⛈️ Tempestade";return"🌡️ --";};
     return{encontrado:true,atual:{temperatura:curr.temperature_2m,umidade:curr.relative_humidity_2m,vento:curr.wind_speed_10m,precipitacao:curr.precipitation,descricao:desc(curr.weather_code)},previsao7dias:(daily.time||[]).slice(-7).map((d,i)=>({data:d,dataFormatada:new Date(d+"T12:00:00").toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}),tempMax:daily.temperature_2m_max?.[i],tempMin:daily.temperature_2m_min?.[i],chuva:daily.precipitation_sum?.[i]||0})),precipitacao30d:precipDiaria,precipTotal30d:Number(precipTotal30d.toFixed(1))};
   }catch{return{encontrado:false};}
 }
@@ -57,11 +187,9 @@ async function buscarClimaFrontend(lat,lng){
 async function buscarNASAFrontend(lat,lng){
   if(!lat||!lng)return{encontrado:false};
   try{
-    const hoje=new Date();
-    const fim=hoje.toISOString().slice(0,10).replace(/-/g,"");
+    const hoje=new Date(),fim=hoje.toISOString().slice(0,10).replace(/-/g,"");
     const inicio=new Date(hoje-30*24*60*60*1000).toISOString().slice(0,10).replace(/-/g,"");
-    const url=`https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN,T2M,PRECTOTCORR,RH2M,WS2M&community=AG&longitude=${lng}&latitude=${lat}&start=${inicio}&end=${fim}&format=JSON`;
-    const resp=await fetch(url,{signal:AbortSignal.timeout(12000)});
+    const resp=await fetch(`https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN,T2M,PRECTOTCORR,RH2M,WS2M&community=AG&longitude=${lng}&latitude=${lat}&start=${inicio}&end=${fim}&format=JSON`,{signal:AbortSignal.timeout(12000)});
     if(!resp.ok)throw new Error();
     const data=await resp.json();
     const prop=data.properties?.parameter||{};
@@ -80,9 +208,8 @@ async function buscarCotacoesFrontend(){
   }catch{return{encontrado:false};}
 }
 
-function recalcularScore(dadosBase,ibama,prodes){
-  const sicar=dadosBase.sicar;const sigef=dadosBase.sigef;
-  let score=100;const fatores=[];
+function calcularScore(sicar, sigef, ibama=null, prodes=null){
+  let score=100; const fatores=[];
   if(!sicar?.encontrado){score-=30;fatores.push({label:"CAR não localizado",impacto:-30,cor:"#ef4444"});}
   else if(sicar?.situacao!=="AT"){score-=20;fatores.push({label:`CAR ${sicar.situacaoLabel}`,impacto:-20,cor:"#fbbf24"});}
   else{fatores.push({label:"CAR Ativo e Regular",impacto:0,cor:"#22c55e"});}
@@ -134,7 +261,7 @@ const PERGUNTAS_RAPIDAS=["Qual o score de risco?","Tem embargo ativo?","A Reserv
 
 function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCadastrado,onResultado,dadosConsulta}){
   const[buscando,setBuscando]=useState(false);
-  const[buscandoExtras,setBuscandoExtras]=useState(false);
+  const[faseBusca,setFaseBusca]=useState("");
   const[resultado,setResultado]=useState(null);
   const[erro,setErro]=useState(null);
 
@@ -150,47 +277,80 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
     if(creditos<=0){onSemCreditos();return;}
     const cr=await usarCredito(`Consulta ${tipo}: ${val.substring(0,40)}`);
     if(cr?.motivo==="sem_creditos"){onSemCreditos();return;}
-    setBuscando(true);setErro(null);setResultado(null);
+    setBuscando(true);setErro(null);setResultado(null);setFaseBusca("sicar");
+
     try{
       let body={};
-      if(tipo==="gps"){const gps=val.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);if(!gps){setErro("GPS inválido.");setBuscando(false);return;}body={lat:parseFloat(gps[1]),lng:parseFloat(gps[2])};}
-      else if(tipo==="ccir"){body={ccir:val};}else if(tipo==="itr"){body={itr:val};}
-      else if(tipo==="endereco"){const geo=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=1&countrycodes=br`);const gd=await geo.json();if(!gd?.length){setErro("Endereço não encontrado.");setBuscando(false);return;}body={lat:parseFloat(gd[0].lat),lng:parseFloat(gd[0].lon)};}
-      else if(tipo==="proprietario"){body={proprietario:val};}else if(tipo==="fazenda"){body={nomeFazenda:val};}else{body={car:val};}
-      const ctrl=new AbortController();
-      const tid=setTimeout(()=>ctrl.abort(),55000);
-      let resp2,dados;
-      try{resp2=await fetch("/api/consulta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:ctrl.signal});}
-      catch(e){clearTimeout(tid);setErro(e.name==="AbortError"?"SICAR demorou. Tente novamente.":"Erro de conexão.");setBuscando(false);return;}
-      clearTimeout(tid);
-      if(!resp2.ok){setErro(`Erro ${resp2.status}. Tente novamente.`);setBuscando(false);return;}
-      try{dados=await resp2.json();}catch{setErro("Resposta inválida.");setBuscando(false);return;}
-      if(!dados.sucesso){setErro(dados.error||"Erro na consulta.");setBuscando(false);return;}
+      let coordsGPS={lat:null,lng:null};
 
-      // ✅ Fase 1: mostra SICAR imediatamente
-      setResultado(dados);onResultado(dados);setBuscando(false);
+      if(tipo==="gps"){
+        const gps=val.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+        if(!gps){setErro("GPS inválido. Use: -11.8456, -55.1987");setBuscando(false);setFaseBusca("");return;}
+        coordsGPS={lat:parseFloat(gps[1]),lng:parseFloat(gps[2])};
+      } else if(tipo==="endereco"){
+        const geo=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=1&countrycodes=br`);
+        const gd=await geo.json();
+        if(!gd?.length){setErro("Endereço não encontrado.");setBuscando(false);setFaseBusca("");return;}
+        coordsGPS={lat:parseFloat(gd[0].lat),lng:parseFloat(gd[0].lon)};
+      } else if(tipo==="ccir"){body={ccir:val};}
+      else if(tipo==="itr"){body={itr:val};}
+      else if(tipo==="proprietario"){body={proprietario:val};}
+      else if(tipo==="fazenda"){body={nomeFazenda:val};}
+      else{body={car:val};}
 
-      // ✅ Fase 2: busca extras direto do browser (sem 504)
-      setBuscandoExtras(true);
-      const car=dados.car||dados.sicar?.car;
-      const lat=dados.coordenadas?.lat;const lng=dados.coordenadas?.lng;
-      const [ibama,prodes,clima,nasa,cotacoes]=await Promise.allSettled([
-        buscarIBAMAFrontend(car),buscarPRODESFrontend(lat,lng),
-        buscarClimaFrontend(lat,lng),buscarNASAFrontend(lat,lng),buscarCotacoesFrontend()
+      // ✅ FASE 1: SICAR + SIGEF direto no frontend via Cloudflare — SEM TIMEOUT 504
+      const [sicar, sigef] = await Promise.all([
+        buscarSICARFrontend(body),
+        buscarSIGEFFrontend({ car: body.car, ccir: body.ccir }),
       ]);
-      const extras={
-        ibama:ibama.status==="fulfilled"?ibama.value:{encontrado:false,temEmbargo:false,totalEmbargos:0,embargos:[]},
-        prodes:prodes.status==="fulfilled"?prodes.value:{encontrado:false,temAlerta:false,totalAlertas:0,alertas:[]},
-        clima:clima.status==="fulfilled"?clima.value:{encontrado:false},
-        nasa:nasa.status==="fulfilled"?nasa.value:{encontrado:false},
-        cotacoes:cotacoes.status==="fulfilled"?cotacoes.value:{encontrado:false},
+
+      const coordLat = coordsGPS.lat || sicar?.lat || sigef?.lat || null;
+      const coordLng = coordsGPS.lng || sicar?.lng || sigef?.lng || null;
+      const carFinal = body.car || sicar?.car || null;
+
+      const scoreInicial = calcularScore(sicar, sigef);
+      const dadosParciais = {
+        sucesso: true,
+        car: carFinal,
+        coordenadas: { lat: coordLat, lng: coordLng },
+        sicar, sigef, score: scoreInicial,
       };
-      const scoreAtualizado=recalcularScore(dados,extras.ibama,extras.prodes);
-      const dadosCompletos={...dados,...extras,score:scoreAtualizado};
-      setResultado(dadosCompletos);onResultado(dadosCompletos);
-      if(user?.uid)await salvarConsultaFS(user.uid,dadosCompletos);
-      setBuscandoExtras(false);
-    }catch(e){setErro("Erro inesperado. Tente novamente.");setBuscando(false);setBuscandoExtras(false);}
+
+      // Mostra resultado parcial imediatamente
+      setResultado(dadosParciais);
+      onResultado(dadosParciais);
+      setFaseBusca("extras");
+      setBuscando(false);
+
+      // ✅ FASE 2: IBAMA, PRODES, Clima, NASA, Cotações em paralelo
+      const [ibama, prodes, clima, nasa, cotacoes] = await Promise.allSettled([
+        buscarIBAMAFrontend(carFinal),
+        buscarPRODESFrontend(coordLat, coordLng),
+        buscarClimaFrontend(coordLat, coordLng),
+        buscarNASAFrontend(coordLat, coordLng),
+        buscarCotacoesFrontend(),
+      ]);
+
+      const extras = {
+        ibama:    ibama.status==="fulfilled"    ? ibama.value    : {encontrado:false,temEmbargo:false,totalEmbargos:0,embargos:[]},
+        prodes:   prodes.status==="fulfilled"   ? prodes.value   : {encontrado:false,temAlerta:false,totalAlertas:0,alertas:[]},
+        clima:    clima.status==="fulfilled"    ? clima.value    : {encontrado:false},
+        nasa:     nasa.status==="fulfilled"     ? nasa.value     : {encontrado:false},
+        cotacoes: cotacoes.status==="fulfilled" ? cotacoes.value : {encontrado:false},
+      };
+
+      const scoreCompleto = calcularScore(sicar, sigef, extras.ibama, extras.prodes);
+      const dadosCompletos = { ...dadosParciais, ...extras, score: scoreCompleto };
+
+      setResultado(dadosCompletos);
+      onResultado(dadosCompletos);
+      if(user?.uid) await salvarConsultaFS(user.uid, dadosCompletos);
+
+    }catch(e){
+      setErro("Erro inesperado. Tente novamente.");
+      setBuscando(false);
+    }
+    setFaseBusca("");
   };
 
   const r=resultado;const score=r?.score;const scoreCor=score?.cor??C.accent;
@@ -202,15 +362,15 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
       {erro&&<div style={{marginTop:12,padding:"10px 14px",background:`${C.red}15`,border:`1px solid ${C.red}40`,borderRadius:8,fontSize:13,color:C.red}}>{erro}</div>}
       {user&&<div style={{marginTop:10,fontSize:11,color:C.textMuted}}>1 crédito por consulta — Créditos: <strong style={{color:creditos>1?C.accent:C.red}}>{creditos}</strong></div>}
     </div>
-    {buscando&&<div style={{...S.card,textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:48,marginBottom:16}}>🔍</div><div style={{fontSize:16,fontWeight:700,color:C.accentBright,marginBottom:8}}>Consultando SICAR...</div><div style={{fontSize:13,color:C.textMuted}}>Buscando dados do imóvel nas fontes oficiais</div></div>}
-    {buscandoExtras&&!buscando&&<div style={{padding:"10px 14px",background:`${C.blue}15`,border:`1px solid ${C.blue}40`,borderRadius:8,fontSize:13,color:C.blue,marginBottom:12}}>⏳ Carregando IBAMA · PRODES · Clima · NASA · Cotações...</div>}
-    {r&&!buscando&&(<div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.green1}30)`,borderRadius:18,padding:"20px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><div style={{fontSize:18,fontWeight:800,color:C.accentBright,marginBottom:4}}>{r.sicar?.nome||r.car||"Imóvel Rural"}</div><div style={{fontSize:13,color:C.textMuted,marginBottom:8}}>📍 {r.sicar?.municipio&&`${r.sicar.municipio}, `}{r.sicar?.uf||""}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><span style={S.chip(r.sicar?.encontrado?C.accent:C.red)}>{r.sicar?.encontrado?"CAR Localizado":"CAR não encontrado"}</span><span style={S.chip(r.ibama?.temEmbargo?C.red:C.accent)}>{r.ibama?.temEmbargo?`${r.ibama.totalEmbargos} Embargo(s)`:buscandoExtras?"Verificando...":"Sem Embargo"}</span><span style={S.chip(r.prodes?.temAlerta?C.orange:C.accent)}>{r.prodes?.temAlerta?`${r.prodes.totalAlertas} Alerta(s)`:buscandoExtras?"Verificando...":"Sem Alerta PRODES"}</span></div></div><div style={{background:C.card,border:`1px solid ${scoreCor}40`,borderRadius:14,padding:"16px 20px",textAlign:"center",minWidth:100}}><div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>Score IA</div><div style={{fontSize:36,fontWeight:900,color:scoreCor,lineHeight:1}}>{score?.valor??0}</div><div style={{fontSize:10,color:C.textMuted}}>/100</div><div style={{fontSize:11,color:scoreCor,marginTop:4,fontWeight:700}}>{score?.nivel}</div></div></div></div>
+    {buscando&&faseBusca==="sicar"&&<div style={{...S.card,textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:48,marginBottom:16}}>🔍</div><div style={{fontSize:16,fontWeight:700,color:C.accentBright,marginBottom:8}}>Buscando no SICAR...</div><div style={{fontSize:13,color:C.textMuted}}>Consultando todos os estados — sem limite de tempo</div></div>}
+    {faseBusca==="extras"&&<div style={{padding:"10px 14px",background:`${C.blue}15`,border:`1px solid ${C.blue}40`,borderRadius:8,fontSize:13,color:C.blue,marginBottom:12}}>⏳ Carregando IBAMA · PRODES · Clima · NASA · Cotações...</div>}
+    {r&&(<div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.green1}30)`,borderRadius:18,padding:"20px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><div style={{fontSize:18,fontWeight:800,color:C.accentBright,marginBottom:4}}>{r.sicar?.nome||r.car||"Imóvel Rural"}</div><div style={{fontSize:13,color:C.textMuted,marginBottom:8}}>📍 {r.sicar?.municipio&&`${r.sicar.municipio}, `}{r.sicar?.uf||""}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><span style={S.chip(r.sicar?.encontrado?C.accent:C.red)}>{r.sicar?.encontrado?"CAR Localizado":"CAR não encontrado"}</span><span style={S.chip(r.ibama?.temEmbargo?C.red:C.accent)}>{r.ibama?.temEmbargo?`${r.ibama.totalEmbargos} Embargo(s)`:faseBusca==="extras"?"Verificando...":"Sem Embargo"}</span><span style={S.chip(r.prodes?.temAlerta?C.orange:C.accent)}>{r.prodes?.temAlerta?`${r.prodes.totalAlertas} Alerta(s)`:faseBusca==="extras"?"Verificando...":"Sem Alerta PRODES"}</span></div></div><div style={{background:C.card,border:`1px solid ${scoreCor}40`,borderRadius:14,padding:"16px 20px",textAlign:"center",minWidth:100}}><div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>Score IA</div><div style={{fontSize:36,fontWeight:900,color:scoreCor,lineHeight:1}}>{score?.valor??0}</div><div style={{fontSize:10,color:C.textMuted}}>/100</div><div style={{fontSize:11,color:scoreCor,marginTop:4,fontWeight:700}}>{score?.nivel}</div></div></div></div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}}>
         {r.sicar?.encontrado&&(<div style={S.card}><div style={{fontSize:13,fontWeight:700,marginBottom:12,color:C.accentBright}}>Dados SICAR/CAR</div>{[["CAR",r.sicar.car?.length>22?r.sicar.car.substring(0,22)+"...":r.sicar.car],["Área Total",r.sicar.area],["Módulos",r.sicar.modulos],["Proprietário",r.sicar.proprietario],["Situação",r.sicar.situacaoLabel],["APP",r.sicar.app],["Res. Legal",r.sicar.rl]].filter(([,v])=>v).map(([l,v])=>(<div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:11}}><span style={{color:C.textMuted}}>{l}</span><span style={{fontWeight:600,color:C.text,textAlign:"right",maxWidth:150}}>{v}</span></div>))}</div>)}
         {r.sigef?.encontrado&&(<div style={S.card}><div style={{fontSize:13,fontWeight:700,marginBottom:12,color:C.blue}}>SIGEF/INCRA</div>{[["Denominação",r.sigef.denominacao],["Área",r.sigef.area],["Município",r.sigef.municipio],["UF",r.sigef.uf],["CCIR",r.sigef.ccir]].filter(([,v])=>v).map(([l,v])=>(<div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${C.border}`,fontSize:11}}><span style={{color:C.textMuted}}>{l}</span><span style={{fontWeight:600,color:C.text}}>{v}</span></div>))}</div>)}
-        <div style={{...S.card,border:`1px solid ${r.ibama?.temEmbargo?C.red:C.accent}30`}}><div style={{fontSize:13,fontWeight:700,marginBottom:12,color:r.ibama?.temEmbargo?C.red:C.accent}}>Embargos IBAMA</div>{buscandoExtras&&!r.ibama?.encontrado?(<div style={{textAlign:"center",padding:"12px 0",color:C.textMuted,fontSize:12}}>Verificando...</div>):!r.ibama?.temEmbargo?(<div style={{textAlign:"center",padding:"12px 0"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontSize:13,fontWeight:700,color:C.accent}}>Nenhum embargo ativo</div></div>):r.ibama.embargos?.map((e,i)=>(<div key={i} style={{padding:"8px 10px",marginBottom:8,border:`1px solid ${C.red}30`,borderRadius:8,background:`${C.red}08`}}><div style={{fontSize:12,fontWeight:700,color:C.red}}>{e.numero}</div><div style={{fontSize:11,color:C.textMuted}}>{e.tipo} - {e.data}</div></div>))}</div>
-        <div style={{...S.card,border:`1px solid ${r.prodes?.temAlerta?C.orange:C.accent}30`}}><div style={{fontSize:13,fontWeight:700,marginBottom:12,color:r.prodes?.temAlerta?C.orange:C.accent}}>PRODES/INPE</div>{buscandoExtras&&!r.prodes?.encontrado?(<div style={{textAlign:"center",padding:"12px 0",color:C.textMuted,fontSize:12}}>Verificando...</div>):!r.prodes?.temAlerta?(<div style={{textAlign:"center",padding:"12px 0"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontSize:13,fontWeight:700,color:C.accent}}>Nenhum alerta</div></div>):(<div style={{fontSize:13,fontWeight:700,color:C.orange}}>{r.prodes.totalAlertas} alerta(s) — {r.prodes.areaDesmatadaKm2} km²</div>)}</div>
+        <div style={{...S.card,border:`1px solid ${r.ibama?.temEmbargo?C.red:C.accent}30`}}><div style={{fontSize:13,fontWeight:700,marginBottom:12,color:r.ibama?.temEmbargo?C.red:C.accent}}>Embargos IBAMA</div>{faseBusca==="extras"&&!r.ibama?.encontrado?(<div style={{textAlign:"center",padding:"12px 0",color:C.textMuted,fontSize:12}}>Verificando...</div>):!r.ibama?.temEmbargo?(<div style={{textAlign:"center",padding:"12px 0"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontSize:13,fontWeight:700,color:C.accent}}>Nenhum embargo ativo</div></div>):r.ibama.embargos?.map((e,i)=>(<div key={i} style={{padding:"8px 10px",marginBottom:8,border:`1px solid ${C.red}30`,borderRadius:8,background:`${C.red}08`}}><div style={{fontSize:12,fontWeight:700,color:C.red}}>{e.numero}</div><div style={{fontSize:11,color:C.textMuted}}>{e.tipo} - {e.data}</div></div>))}</div>
+        <div style={{...S.card,border:`1px solid ${r.prodes?.temAlerta?C.orange:C.accent}30`}}><div style={{fontSize:13,fontWeight:700,marginBottom:12,color:r.prodes?.temAlerta?C.orange:C.accent}}>PRODES/INPE</div>{faseBusca==="extras"&&!r.prodes?.encontrado?(<div style={{textAlign:"center",padding:"12px 0",color:C.textMuted,fontSize:12}}>Verificando...</div>):!r.prodes?.temAlerta?(<div style={{textAlign:"center",padding:"12px 0"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontSize:13,fontWeight:700,color:C.accent}}>Nenhum alerta</div></div>):(<div style={{fontSize:13,fontWeight:700,color:C.orange}}>{r.prodes.totalAlertas} alerta(s) — {r.prodes.areaDesmatadaKm2} km²</div>)}</div>
         {r.clima?.encontrado&&(<div style={S.card}><div style={{fontSize:13,fontWeight:700,marginBottom:12,color:C.blue}}>Clima</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[["Temperatura",`${r.clima.atual?.temperatura??'--'}°C`],["Umidade",`${r.clima.atual?.umidade??'--'}%`],["Vento",`${r.clima.atual?.vento??'--'} km/h`],["Chuva 30d",`${r.clima.precipTotal30d??0} mm`]].map(([l,v])=>(<div key={l} style={{background:`${C.blue}10`,border:`1px solid ${C.blue}20`,borderRadius:8,padding:"8px 10px"}}><div style={{fontSize:10,color:C.textMuted}}>{l}</div><div style={{fontSize:14,fontWeight:800,color:C.blue}}>{v}</div></div>))}</div></div>)}
         {r.cotacoes?.encontrado&&(<div style={S.card}><div style={{fontSize:13,fontWeight:700,color:C.yellow,marginBottom:12}}>Cotações CEPEA</div>{Object.entries(r.cotacoes.produtos||{}).map(([k,v])=>(<div key={k} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}`}}><div style={{fontSize:12,fontWeight:600}}>{v.nome}</div><div style={{fontSize:13,fontWeight:800,color:C.yellow}}>{v.preco?`R$ ${Number(v.preco).toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—"}</div></div>))}</div>)}
         {score?.fatores&&(<div style={S.card}><div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Análise de Risco IA</div>{score.fatores.map((f,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 10px",marginBottom:6,borderRadius:8,border:`1px solid ${f.cor}30`,background:`${f.cor}08`}}><span style={{fontSize:12,color:C.textMuted}}>{f.label}</span><span style={{fontSize:12,fontWeight:700,color:f.cor}}>{f.impacto===0?"OK":f.impacto}</span></div>))}</div>)}
@@ -227,7 +387,7 @@ function EmbargoPage(){const[car,setCar]=useState("");const[buscando,setBuscando
 
 function ProdesPage(){const[coords,setCoords]=useState("");const[buscando,setBuscando]=useState(false);const[resultado,setResultado]=useState(null);const[erro,setErro]=useState(null);const buscar=async()=>{if(!coords.trim()||buscando)return;const gps=coords.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);if(!gps){setErro("Use: -11.8456, -55.1987");return;}setBuscando(true);setErro(null);setResultado(null);try{const r=await buscarPRODESFrontend(parseFloat(gps[1]),parseFloat(gps[2]));setResultado(r);}catch{setErro("Não foi possível consultar o PRODES/INPE.");}setBuscando(false);};return(<div style={{padding:"20px 16px",maxWidth:900,margin:"0 auto"}}><div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.orange}15)`,borderRadius:20,padding:"24px 20px",marginBottom:20}}><div style={{fontSize:"clamp(17px,4vw,22px)",fontWeight:800,marginBottom:4}}>PRODES/INPE Desmatamento</div><div style={{color:C.textMuted,fontSize:13,marginBottom:16}}>Alertas via satélite DETER</div><div style={{display:"flex",gap:8}}><input style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 14px",color:C.text,fontSize:13,outline:"none",height:42}} placeholder="GPS: -11.8456, -55.1987" value={coords} onChange={e=>setCoords(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar()}/><button onClick={buscar} disabled={buscando||!coords.trim()} style={{background:buscando||!coords.trim()?C.border:`linear-gradient(135deg,${C.orange},#ea580c)`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 20px",cursor:buscando||!coords.trim()?"default":"pointer",height:42}}>{buscando?"Buscando...":"Consultar"}</button></div>{erro&&<div style={{marginTop:12,padding:"10px 14px",background:`${C.orange}15`,border:`1px solid ${C.orange}40`,borderRadius:8,fontSize:13,color:C.orange}}>{erro}</div>}</div>{resultado&&(<div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><div style={{fontSize:15,fontWeight:700}}>Resultado</div><span style={S.chip(resultado.temAlerta?C.orange:C.accent)}>{resultado.temAlerta?`${resultado.totalAlertas} alerta(s)`:"Sem alertas"}</span></div>{!resultado.temAlerta?(<div style={{textAlign:"center",padding:"24px 0"}}><div style={{fontSize:48,marginBottom:12}}>🌳</div><div style={{fontSize:16,fontWeight:700,color:C.accent}}>Nenhum alerta detectado</div></div>):(resultado.alertas.map((a,i)=>(<div key={i} style={{padding:"12px",marginBottom:10,border:`1px solid ${C.orange}30`,borderRadius:10,background:`${C.orange}06`}}><div style={{fontSize:13,fontWeight:700,color:C.orange}}>{a.classname||"Desmatamento"}</div><div style={{fontSize:11,color:C.textMuted}}>{a.data||"—"} · {a.areaKm2||"—"} km²</div></div>)))}</div>)}</div>);}
 
-function PrecipitacaoPage(){const[coords,setCoords]=useState("");const[buscando,setBuscando]=useState(false);const[resultado,setResultado]=useState(null);const[erro,setErro]=useState(null);const buscar=async()=>{if(!coords.trim()||buscando)return;const gps=coords.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);if(!gps){setErro("Use: -11.8456, -55.1987");return;}setBuscando(true);setErro(null);setResultado(null);try{const r=await buscarClimaFrontend(parseFloat(gps[1]),parseFloat(gps[2]));setResultado(r);}catch{setErro("Não foi possível buscar dados climáticos.");}setBuscando(false);};return(<div style={{padding:"20px 16px",maxWidth:900,margin:"0 auto"}}><div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.blue}15)`,borderRadius:20,padding:"24px 20px",marginBottom:20}}><div style={{fontSize:"clamp(17px,4vw,22px)",fontWeight:800,marginBottom:4}}>Precipitação e Clima</div><div style={{color:C.textMuted,fontSize:13,marginBottom:16}}>Histórico 30 dias + previsão 14 dias</div><div style={{display:"flex",gap:8}}><input style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 14px",color:C.text,fontSize:13,outline:"none",height:42}} placeholder="GPS: -11.8456, -55.1987" value={coords} onChange={e=>setCoords(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar()}/><button onClick={buscar} disabled={buscando||!coords.trim()} style={{background:buscando||!coords.trim()?C.border:`linear-gradient(135deg,${C.blue},#2563eb)`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 20px",cursor:buscando||!coords.trim()?"default":"pointer",height:42}}>{buscando?"Buscando...":"Consultar"}</button></div>{erro&&<div style={{marginTop:12,padding:"10px 14px",background:`${C.blue}15`,border:`1px solid ${C.blue}40`,borderRadius:8,fontSize:13,color:C.blue}}>{erro}</div>}</div>{!resultado&&!buscando&&(<div style={{...S.card,textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:56,marginBottom:16}}>💧</div><div style={{fontSize:15,fontWeight:700,color:C.blue}}>Digite as coordenadas GPS acima</div></div>)}{resultado?.encontrado&&(<div style={{display:"flex",flexDirection:"column",gap:14}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>{[["Temperatura",`${resultado.atual?.temperatura??'--'}°C`,C.red],["Umidade",`${resultado.atual?.umidade??'--'}%`,C.blue],["Chuva hoje",`${resultado.atual?.precipitacao??0} mm`,C.blue],["Total 30d",`${resultado.precipTotal30d??0} mm`,C.blue]].map(([l,v,c])=>(<div key={l} style={{...S.card,padding:14,textAlign:"center"}}><div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>{l}</div><div style={{fontSize:18,fontWeight:800,color:c}}>{v}</div></div>))}</div><div style={S.card}><div style={{fontSize:14,fontWeight:700,marginBottom:14}}>Precipitação — últimos 30 dias</div><div style={{display:"flex",alignItems:"flex-end",gap:2,height:80}}>{(()=>{const dados=resultado.precipitacao30d||[];const max=Math.max(...dados,1);return dados.map((v,i)=>(<div key={i} style={{flex:1,height:`${Math.max((v/max)*100,4)}%`,background:`linear-gradient(180deg,${C.blue},${C.blue}40)`,borderRadius:"3px 3px 0 0",minHeight:3}}/>));})()}</div></div></div>)}</div>);}
+function PrecipitacaoPage(){const[coords,setCoords]=useState("");const[buscando,setBuscando]=useState(false);const[resultado,setResultado]=useState(null);const[erro,setErro]=useState(null);const buscar=async()=>{if(!coords.trim()||buscando)return;const gps=coords.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);if(!gps){setErro("Use: -11.8456, -55.1987");return;}setBuscando(true);setErro(null);setResultado(null);try{const r=await buscarClimaFrontend(parseFloat(gps[1]),parseFloat(gps[2]));setResultado(r);}catch{setErro("Não foi possível buscar dados climáticos.");}setBuscando(false);};return(<div style={{padding:"20px 16px",maxWidth:900,margin:"0 auto"}}><div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.blue}15)`,borderRadius:20,padding:"24px 20px",marginBottom:20}}><div style={{fontSize:"clamp(17px,4vw,22px)",fontWeight:800,marginBottom:4}}>Precipitação e Clima</div><div style={{color:C.textMuted,fontSize:13,marginBottom:16}}>Histórico 30 dias + previsão 14 dias</div><div style={{display:"flex",gap:8}}><input style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:"0 14px",color:C.text,fontSize:13,outline:"none",height:42}} placeholder="GPS: -11.8456, -55.1987" value={coords} onChange={e=>setCoords(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar()}/><button onClick={buscar} disabled={buscando||!coords.trim()} style={{background:buscando||!coords.trim()?C.border:`linear-gradient(135deg,${C.blue},#2563eb)`,border:"none",borderRadius:10,color:C.text,fontWeight:700,fontSize:13,padding:"0 20px",cursor:buscando||!coords.trim()?"default":"pointer",height:42}}>{buscando?"Buscando...":"Consultar"}</button></div>{erro&&<div style={{marginTop:12,padding:"10px 14px",background:`${C.blue}15`,border:`1px solid ${C.blue}40`,borderRadius:8,fontSize:13,color:C.blue}}>{erro}</div>}</div>{!resultado&&!buscando&&(<div style={{...S.card,textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:56,marginBottom:16}}>💧</div><div style={{fontSize:15,fontWeight:700,color:C.blue}}>Digite as coordenadas GPS acima</div></div>)}{resultado?.encontrado&&(<div style={{display:"flex",flexDirection:"column",gap:14}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>{[["Temperatura",`${resultado.atual?.temperatura??'--'}°C`,C.red],["Umidade",`${resultado.atual?.umidade??'--'}%`,C.blue],["Chuva hoje",`${resultado.atual?.precipitacao??0} mm`,C.blue],["Total 30d",`${resultado.precipTotal30d??0} mm`,C.blue]].map(([l,v,c])=>(<div key={l} style={{...S.card,padding:14,textAlign:"center"}}><div style={{fontSize:10,color:C.textMuted,marginBottom:4}}>{l}</div><div style={{fontSize:18,fontWeight:800,color:c}}>{v}</div></div>))}</div></div>)}</div>);}
 
 function IAPage({usarCredito,creditos,onSemCreditos,onNaoCadastrado,user,dadosConsulta}){
   const fazendaNome=dadosConsulta?.sicar?.nome||"Imóvel Rural";
@@ -255,20 +415,10 @@ function Dashboard({user,setPage,onNaoCadastrado,onConsultarDireto,dadosConsulta
       {!user&&<div style={{background:`linear-gradient(135deg,${C.green1}60,${C.green2}20)`,border:`1px solid ${C.borderLight}`,borderRadius:12,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}><div><div style={{fontSize:13,fontWeight:700,color:C.accentBright}}>🎁 Cadastre-se e ganhe 3 créditos grátis!</div><div style={{fontSize:11,color:C.textMuted}}>Consulte fazendas, embargos, PRODES e muito mais.</div></div><button onClick={onNaoCadastrado} style={{padding:"8px 18px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>Cadastrar grátis →</button></div>}
       <BuscaBox onConsultar={onConsultarDireto} buscando={false} user={user} onNaoCadastrado={onNaoCadastrado}/>
     </div>
-    {dadosConsulta?.sicar?.encontrado&&(
-      <div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.green1}20)`,borderRadius:16,padding:"16px 20px",marginBottom:16,cursor:"pointer"}} onClick={()=>setPage("consulta")}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:12,fontWeight:700,color:C.textMuted}}>📌 Última consulta</div><span style={{fontSize:11,color:C.accent,fontWeight:600}}>Ver detalhes →</span></div>
-        <div style={{fontSize:14,fontWeight:800,color:C.accentBright}}>{dadosConsulta.sicar.nome||"Imóvel Rural"}</div>
-        <div style={{fontSize:12,color:C.textMuted}}>📍 {dadosConsulta.sicar.municipio}, {dadosConsulta.sicar.uf} · {dadosConsulta.sicar.area}</div>
-        <div style={{display:"flex",gap:6,marginTop:8}}><span style={S.chip(dadosConsulta.score?.cor||C.accent)}>Score {dadosConsulta.score?.valor||0}/100</span><span style={S.chip(dadosConsulta.ibama?.temEmbargo?C.red:C.accent)}>{dadosConsulta.ibama?.temEmbargo?"Embargo":"Sem Embargo"}</span></div>
-      </div>
-    )}
+    {dadosConsulta?.sicar?.encontrado&&(<div style={{...S.card,background:`linear-gradient(135deg,${C.card},${C.green1}20)`,borderRadius:16,padding:"16px 20px",marginBottom:16,cursor:"pointer"}} onClick={()=>setPage("consulta")}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:12,fontWeight:700,color:C.textMuted}}>📌 Última consulta</div><span style={{fontSize:11,color:C.accent,fontWeight:600}}>Ver detalhes →</span></div><div style={{fontSize:14,fontWeight:800,color:C.accentBright}}>{dadosConsulta.sicar.nome||"Imóvel Rural"}</div><div style={{fontSize:12,color:C.textMuted}}>📍 {dadosConsulta.sicar.municipio}, {dadosConsulta.sicar.uf} · {dadosConsulta.sicar.area}</div><div style={{display:"flex",gap:6,marginTop:8}}><span style={S.chip(dadosConsulta.score?.cor||C.accent)}>Score {dadosConsulta.score?.valor||0}/100</span><span style={S.chip(dadosConsulta.ibama?.temEmbargo?C.red:C.accent)}>{dadosConsulta.ibama?.temEmbargo?"Embargo":"Sem Embargo"}</span></div></div>)}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>{[{icon:"🔍",val:"1.847",label:"Consultas Hoje",color:C.accent},{icon:"🌾",val:"34.291",label:"Imóveis",color:C.yellow},{icon:"🚨",val:"128",label:"Alertas",color:C.red},{icon:"✅",val:"98,4%",label:"Disponibilidade",color:C.blue}].map((s,i)=>(<div key={i} style={{...S.card,display:"flex",alignItems:"center",gap:10,padding:"14px"}}><div style={{width:38,height:38,borderRadius:10,background:`${s.color}20`,border:`1px solid ${s.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{s.icon}</div><div><div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div><div style={{fontSize:10,color:C.textMuted,marginTop:1}}>{s.label}</div></div></div>))}</div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginBottom:14}}>
-      <div style={S.card}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><span style={{fontSize:14,fontWeight:700}}>Consultas Recentes</span></div>
-        {!user?(<div style={{textAlign:"center",padding:"20px 0"}}><div style={{fontSize:36,marginBottom:8}}>🔍</div><div style={{fontSize:13,color:C.textMuted,marginBottom:12}}>Faça login para ver seu histórico</div><button onClick={onNaoCadastrado} style={{padding:"8px 20px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:700,fontSize:12,cursor:"pointer"}}>Entrar / Cadastrar</button></div>):loadingHist?(<div style={{textAlign:"center",padding:"16px 0",color:C.textMuted,fontSize:12}}>Carregando...</div>):historico.length===0?(<div style={{textAlign:"center",padding:"16px 0"}}><div style={{fontSize:32,marginBottom:8}}>🔍</div><div style={{fontSize:13,color:C.textMuted}}>Nenhuma consulta ainda.</div></div>):(<table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Fazenda","Data","Status"].map(h=><th key={h} style={S.tableTh}>{h}</th>)}</tr></thead><tbody>{historico.map((r,i)=>(<tr key={i} onClick={()=>handleClicarHistorico(r)} style={{cursor:r.dadosCompletos?"pointer":"default"}} onMouseOver={e=>{if(r.dadosCompletos)e.currentTarget.style.background=C.green1+"30";}} onMouseOut={e=>e.currentTarget.style.background="transparent"}><td style={S.tableTd}><div style={{fontWeight:600}}>{r.nome?.substring(0,18)}</div></td><td style={{...S.tableTd,color:C.textMuted,whiteSpace:"nowrap"}}>{formatarData(r.criadoEm)}</td><td style={S.tableTd}><span style={S.chip(r.status==="ok"?C.accent:r.status==="alerta"?C.yellow:C.red)}>{r.status==="ok"?"OK":r.status==="alerta"?"Alerta":"Embargo"}</span></td></tr>))}</tbody></table>)}
-      </div>
+      <div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><span style={{fontSize:14,fontWeight:700}}>Consultas Recentes</span></div>{!user?(<div style={{textAlign:"center",padding:"20px 0"}}><div style={{fontSize:36,marginBottom:8}}>🔍</div><div style={{fontSize:13,color:C.textMuted,marginBottom:12}}>Faça login para ver seu histórico</div><button onClick={onNaoCadastrado} style={{padding:"8px 20px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.green2},${C.green3})`,color:C.text,fontWeight:700,fontSize:12,cursor:"pointer"}}>Entrar / Cadastrar</button></div>):loadingHist?(<div style={{textAlign:"center",padding:"16px 0",color:C.textMuted,fontSize:12}}>Carregando...</div>):historico.length===0?(<div style={{textAlign:"center",padding:"16px 0"}}><div style={{fontSize:32,marginBottom:8}}>🔍</div><div style={{fontSize:13,color:C.textMuted}}>Nenhuma consulta ainda.</div></div>):(<table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr>{["Fazenda","Data","Status"].map(h=><th key={h} style={S.tableTh}>{h}</th>)}</tr></thead><tbody>{historico.map((r,i)=>(<tr key={i} onClick={()=>handleClicarHistorico(r)} style={{cursor:r.dadosCompletos?"pointer":"default"}} onMouseOver={e=>{if(r.dadosCompletos)e.currentTarget.style.background=C.green1+"30";}} onMouseOut={e=>e.currentTarget.style.background="transparent"}><td style={S.tableTd}><div style={{fontWeight:600}}>{r.nome?.substring(0,18)}</div></td><td style={{...S.tableTd,color:C.textMuted,whiteSpace:"nowrap"}}>{formatarData(r.criadoEm)}</td><td style={S.tableTd}><span style={S.chip(r.status==="ok"?C.accent:r.status==="alerta"?C.yellow:C.red)}>{r.status==="ok"?"OK":r.status==="alerta"?"Alerta":"Embargo"}</span></td></tr>))}</tbody></table>)}</div>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         <div style={S.card}><div style={{fontSize:14,fontWeight:700,marginBottom:12,textAlign:"center"}}>Score IA Médio</div><div style={S.scoreRing}><div style={S.scoreInner}><div style={{fontSize:24,fontWeight:900,color:C.accentBright,lineHeight:1}}>{dadosConsulta?.score?.valor||78}</div><div style={{fontSize:11,color:C.textMuted}}>/ 100</div></div></div></div>
         <div style={S.card}><div style={{fontSize:14,fontWeight:700,marginBottom:10}}>Alertas Recentes</div>{[{msg:"Embargo IBAMA ativo",sub:"Faz. Santa Rosa MS",color:C.red,icon:"⛔"},{msg:"Desmatamento detectado",sub:"Sítio Bela Vista PA",color:C.orange,icon:"🛸"},{msg:"Moratória do Cerrado",sub:"Faz. Chapada BA",color:C.yellow,icon:"🌱"}].map((a,i)=>(<div key={i} style={{display:"flex",gap:8,padding:"8px 10px",borderRadius:8,marginBottom:6,border:`1px solid ${a.color}40`,background:`${a.color}08`}}><span>{a.icon}</span><div><div style={{fontSize:12,fontWeight:600,color:a.color}}>{a.msg}</div><div style={{fontSize:11,opacity:0.7}}>{a.sub}</div></div></div>))}</div>
