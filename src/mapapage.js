@@ -484,6 +484,17 @@ export default function MapaPage({ dadosConsulta }) {
     const bounds = geoLayer.getBounds(), center = bounds.getCenter();
     adicionarMarcador(map, L, center.lat, center.lng, dados);
     map.fitBounds(bounds, { padding:[40,40] });
+    // ✅ Carrega vizinhos automaticamente
+    const car = dados.car || dados.sicar?.car;
+    const lat = center.lat, lng = center.lng;
+    if (car && lat && lng) {
+      setTimeout(async () => {
+        try {
+          const resultado = await buscarSobreposicoes(lat, lng, car, map, L, abrirDrawerVizinho);
+          setSobreposicoes(resultado);
+        } catch {}
+      }, 800);
+    }
   };
 
   const handleBuscarSobreposicoes = async () => {
