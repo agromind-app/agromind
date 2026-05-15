@@ -287,11 +287,13 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
         const gps=val.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
         if(!gps){setErro("GPS inválido. Use: -11.8456, -55.1987");setBuscando(false);setFaseBusca("");return;}
         coordsGPS={lat:parseFloat(gps[1]),lng:parseFloat(gps[2])};
+        body={lat:coordsGPS.lat,lng:coordsGPS.lng};
       } else if(tipo==="endereco"){
         const geo=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=1&countrycodes=br`);
         const gd=await geo.json();
         if(!gd?.length){setErro("Endereço não encontrado.");setBuscando(false);setFaseBusca("");return;}
         coordsGPS={lat:parseFloat(gd[0].lat),lng:parseFloat(gd[0].lon)};
+        body={lat:coordsGPS.lat,lng:coordsGPS.lng};
       } else if(tipo==="ccir"){body={ccir:val};}
       else if(tipo==="itr"){body={itr:val};}
       else if(tipo==="proprietario"){body={proprietario:val};}
