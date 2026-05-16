@@ -426,7 +426,11 @@ export default function MapaPage({ dadosConsulta }) {
     setUploadandoDoc(false);
   };
 
-  // ── Medição
+  // ── Medição avançada
+  const [tamanhoDesenho, setTamanhoDesenho] = useState("");
+  const [unidadeDesenho, setUnidadeDesenho] = useState("ha");
+  const desenhoLayerRef = useRef(null);
+
   const iniciarMedicao = (modo) => {
     if (modoMedicao === modo) { pararMedicao(); return; }
     pararMedicao();
@@ -449,6 +453,86 @@ export default function MapaPage({ dadosConsulta }) {
     medicaoMarkersRef.current.forEach(m => { try { map.removeLayer(m); } catch {} });
     medicaoMarkersRef.current = [];
     if (medicaoLayerRef.current) { try { map.removeLayer(medicaoLayerRef.current); } catch {} medicaoLayerRef.current = null; }
+    if (desenhoLayerRef.current) { try { map.removeLayer(desenhoLayerRef.current); } catch {} desenhoLayerRef.current = null; }
+  };
+
+  // ── Desfazer último ponto
+  const desfazerPonto = () => {
+    const map = leafletMap.current, L = window.L;
+    if (!map || !L || !medicaoPontosRef.current.length) return;
+    const ultimo = medicaoMarkersRef.current.pop();
+    if (ultimo) try { map.removeLayer(ultimo); } catch {}
+    medicaoPontosRef.current.pop();
+    const pontos = medicaoPontosRef.current;
+    if (medicaoLayerRef.current) { try { map.removeLayer(medicaoLayerRef.current); } catch {} medicaoLayerRef.current = null; }
+    if (pontos.length >= 2 && modoMedicao === "distancia") {
+      const line = L.polyline(pontos, { color:"#3b82f6", weight:3, dashArray:"8,4" }); line.addTo(map); medicaoLayerRef.current = line;
+      let dist = 0; for (let i = 0; i < pontos.length-1; i++) dist += calcularDistanciaM(pontos[i][0],pontos[i][1],pontos[i+1][0],pontos[i+1][1]);
+      setResultadoMedicao({ tipo:"distancia", valor:formatarDistancia(dist), pontos:pontos.length });
+    } else if (pontos.length >= 3 && modoMedicao === "area") {
+      const poly = L.polygon(pontos, { color:"#22c55e", weight:2, fillColor:"#22c55e", fillOpacity:0.2, dashArray:"6,3" }); poly.addTo(map); medicaoLayerRef.current = poly;
+      setResultadoMedicao({ tipo:"area", valor:formatarArea(calcularAreaHa(pontos)), ha:calcularAreaHa(pontos), pontos:pontos.length });
+    } else { setResultadoMedicao(null); }
+  };
+
+  // ── Fechar polígono (finalizar área)
+  const fecharPoligono = () => {
+    const pontos = medicaoPontosRef.current;
+    if (pontos.length < 3) { alert("Marque pelo menos 3 pontos para fechar o polígono."); return; }
+    const ha = calcularAreaHa(pontos);
+    setResultadoMedicao({ tipo:"area", valor:formatarArea(ha), ha, pontos:pontos.length, fechado:true });
+    if (leafletMap.current && window.L) {
+      if (medicaoLayerRef.current) { try { leafletMap.current.removeLayer(medicaoLayerRef.current); } catch {} }
+      const poly = window.L.polygon(pontos, { color:"#22c55e", weight:3, fillColor:"#22c55e", fillOpacity:0.25 });
+      poly.addTo(leafletMap.current);
+      medicaoLayerRef.current = poly;
+    }
+    setModoMedicao(null);
+    if (leafletMap.current) leafletMap.current.getContainer().style.cursor = "";
+  };
+
+  // ── Medir área do CAR atual
+  const medirAreaCAR = () => {
+    if (!dadosReais?.sicar?.geometria && !dadosReais?.sigef?.geometria) {
+      alert("Carregue um imóvel primeiro.");
+      return;
+    }
+    const geom = dadosReais.sicar?.geometria || dadosReais.sigef?.geometria;
+    if (!geom) return;
+    try {
+      const coords = geom.type === "MultiPolygon" ? geom.coordinates[0][0] : geom.coordinates[0];
+      const pontos = coords.map(c => [c[1], c[0]]);
+      const ha = calcularAreaHa(pontos);
+      setResultadoMedicao({ tipo:"area", valor:formatarArea(ha), ha, pontos:pontos.length, fonte:"CAR" });
+    } catch { alert("Não foi possível calcular a área do polígono."); }
+  };
+
+  // ── Desenhar área por tamanho
+  const desenharPorTamanho = () => {
+    const val = parseFloat(tamanhoDesenho.replace(",","."));
+    if (!val || val <= 0) { alert("Digite um valor válido."); return; }
+    const map = leafletMap.current, L = window.L;
+    if (!map || !L) return;
+    // Converte para ha
+    const ha = unidadeDesenho === "m2" ? val / 10000 : unidadeDesenho === "alq" ? val * 2.42 : val;
+    // Calcula lado do quadrado equivalente
+    const ladoM = Math.sqrt(ha * 10000);
+    const ladoGrau = ladoM / 111320;
+    const center = map.getCenter();
+    const lat = center.lat, lng = center.lng;
+    const pontos = [
+      [lat + ladoGrau/2, lng - ladoGrau/2],
+      [lat + ladoGrau/2, lng + ladoGrau/2],
+      [lat - ladoGrau/2, lng + ladoGrau/2],
+      [lat - ladoGrau/2, lng - ladoGrau/2],
+    ];
+    if (desenhoLayerRef.current) { try { map.removeLayer(desenhoLayerRef.current); } catch {} }
+    const poly = L.polygon(pontos, { color:"#f97316", weight:3, fillColor:"#f97316", fillOpacity:0.2, dashArray:"8,4" });
+    poly.bindPopup(`<div style="font-family:sans-serif;text-align:center;padding:4px"><div style="font-weight:800;color:#f97316;font-size:14px">${formatarArea(ha)}</div><div style="font-size:11px;color:#666">Área desenhada — arraste os vértices</div></div>`).openPopup();
+    poly.addTo(map);
+    desenhoLayerRef.current = poly;
+    map.fitBounds(poly.getBounds(), { padding:[60,60] });
+    setResultadoMedicao({ tipo:"desenho", valor:formatarArea(ha), ha, pontos:4 });
   };
 
   const handleMapClick = (e) => {
@@ -458,7 +542,8 @@ export default function MapaPage({ dadosConsulta }) {
     const ponto = [e.latlng.lat, e.latlng.lng];
     medicaoPontosRef.current.push(ponto);
     const pontos = medicaoPontosRef.current, n = pontos.length;
-    const icon = L.divIcon({ html:`<div style="background:${modoMedicao==="area"?"#22c55e":"#3b82f6"};color:white;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4)">${n}</div>`, iconSize:[22,22], iconAnchor:[11,11], className:"" });
+    const cor = modoMedicao === "area" ? "#22c55e" : "#3b82f6";
+    const icon = L.divIcon({ html:`<div style="background:${cor};color:white;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4)">${n}</div>`, iconSize:[22,22], iconAnchor:[11,11], className:"" });
     const marker = L.marker(ponto, { icon }); marker.addTo(map); medicaoMarkersRef.current.push(marker);
     if (medicaoLayerRef.current) { try { map.removeLayer(medicaoLayerRef.current); } catch {} }
     if (modoMedicao === "distancia" && pontos.length >= 2) {
@@ -466,11 +551,18 @@ export default function MapaPage({ dadosConsulta }) {
       let dist = 0; for (let i = 0; i < pontos.length-1; i++) dist += calcularDistanciaM(pontos[i][0],pontos[i][1],pontos[i+1][0],pontos[i+1][1]);
       setResultadoMedicao({ tipo:"distancia", valor:formatarDistancia(dist), pontos:pontos.length });
     }
-    if (modoMedicao === "area" && pontos.length >= 3) {
-      const poly = L.polygon(pontos, { color:"#22c55e", weight:2, fillColor:"#22c55e", fillOpacity:0.2, dashArray:"6,3" }); poly.addTo(map); medicaoLayerRef.current = poly;
-      setResultadoMedicao({ tipo:"area", valor:formatarArea(calcularAreaHa(pontos)), pontos:pontos.length });
-    } else if (modoMedicao === "area" && pontos.length === 2) {
-      const line = L.polyline(pontos, { color:"#22c55e", weight:2, dashArray:"6,3" }); line.addTo(map); medicaoLayerRef.current = line;
+    // ✅ Área: infinitos pontos, atualiza a cada clique
+    if (modoMedicao === "area") {
+      if (pontos.length >= 2) {
+        const drawLayer = pontos.length >= 3
+          ? L.polygon(pontos, { color:"#22c55e", weight:2, fillColor:"#22c55e", fillOpacity:0.2, dashArray:"6,3" })
+          : L.polyline(pontos, { color:"#22c55e", weight:2, dashArray:"6,3" });
+        drawLayer.addTo(map); medicaoLayerRef.current = drawLayer;
+      }
+      if (pontos.length >= 3) {
+        const ha = calcularAreaHa(pontos);
+        setResultadoMedicao({ tipo:"area", valor:formatarArea(ha), ha, pontos:pontos.length });
+      }
     }
   };
 
@@ -708,24 +800,66 @@ export default function MapaPage({ dadosConsulta }) {
         {/* Ferramentas de Medição */}
         <div style={{padding:14,borderBottom:`1px solid ${C.border}`}}>
           <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>📏 Ferramentas de Medição</div>
+
+          {/* Botões principais */}
           <div style={{display:"flex",gap:6,marginBottom:8}}>
-            <button onClick={()=>iniciarMedicao("distancia")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1px solid ${modoMedicao==="distancia"?C.blue:C.border}`,background:modoMedicao==="distancia"?`${C.blue}20`:"transparent",color:modoMedicao==="distancia"?C.blue:C.textMuted,fontSize:11,fontWeight:modoMedicao==="distancia"?700:400,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+            <button onClick={()=>iniciarMedicao("distancia")} style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${modoMedicao==="distancia"?C.blue:C.border}`,background:modoMedicao==="distancia"?`${C.blue}20`:"transparent",color:modoMedicao==="distancia"?C.blue:C.textMuted,fontSize:10,fontWeight:modoMedicao==="distancia"?700:400,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
               📏 {modoMedicao==="distancia"?"Medindo...":"Distância"}
             </button>
-            <button onClick={()=>iniciarMedicao("area")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1px solid ${modoMedicao==="area"?C.accent:C.border}`,background:modoMedicao==="area"?`${C.accent}20`:"transparent",color:modoMedicao==="area"?C.accent:C.textMuted,fontSize:11,fontWeight:modoMedicao==="area"?700:400,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+            <button onClick={()=>iniciarMedicao("area")} style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${modoMedicao==="area"?C.accent:C.border}`,background:modoMedicao==="area"?`${C.accent}20`:"transparent",color:modoMedicao==="area"?C.accent:C.textMuted,fontSize:10,fontWeight:modoMedicao==="area"?700:400,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
               📐 {modoMedicao==="area"?"Medindo...":"Medir Área"}
             </button>
+            <button onClick={medirAreaCAR} title="Medir área do CAR atual" style={{padding:"8px 8px",borderRadius:8,border:`1px solid ${C.yellow}40`,background:`${C.yellow}10`,color:C.yellow,fontSize:12,cursor:"pointer",flexShrink:0}} >🌿</button>
           </div>
-          {modoMedicao&&(<div style={{padding:"8px 10px",background:`${modoMedicao==="area"?C.accent:C.blue}15`,border:`1px solid ${modoMedicao==="area"?C.accent:C.blue}40`,borderRadius:8,marginBottom:8}}>
-            <div style={{fontSize:11,color:modoMedicao==="area"?C.accent:C.blue,fontWeight:600,marginBottom:2}}>{modoMedicao==="area"?"📐 Clique nos vértices da área":"📏 Clique nos pontos"}</div>
+
+          {/* Status medição */}
+          {modoMedicao&&(<div style={{padding:"8px 10px",background:`${modoMedicao==="area"?C.accent:C.blue}15`,border:`1px solid ${modoMedicao==="area"?C.accent:C.blue}40`,borderRadius:8,marginBottom:6}}>
+            <div style={{fontSize:11,color:modoMedicao==="area"?C.accent:C.blue,fontWeight:600,marginBottom:2}}>{modoMedicao==="area"?"📐 Clicando vértices — sem limite de pontos":"📏 Clique nos pontos"}</div>
             <div style={{fontSize:10,color:C.textMuted}}>{medicaoPontosRef.current.length} ponto(s) marcado(s)</div>
+            {modoMedicao==="area"&&medicaoPontosRef.current.length>=3&&(
+              <div style={{display:"flex",gap:5,marginTop:6}}>
+                <button onClick={fecharPoligono} style={{flex:1,padding:"5px 0",borderRadius:6,background:`${C.accent}20`,border:`1px solid ${C.accent}40`,color:C.accent,fontSize:10,fontWeight:700,cursor:"pointer"}}>✅ Fechar Polígono</button>
+                <button onClick={desfazerPonto} style={{padding:"5px 8px",borderRadius:6,background:`${C.yellow}15`,border:`1px solid ${C.yellow}40`,color:C.yellow,fontSize:10,cursor:"pointer"}}>↩ Desfazer</button>
+              </div>
+            )}
+            {modoMedicao==="distancia"&&(<button onClick={desfazerPonto} style={{marginTop:4,width:"100%",padding:"4px 0",borderRadius:6,background:`${C.yellow}15`,border:`1px solid ${C.yellow}40`,color:C.yellow,fontSize:10,cursor:"pointer"}}>↩ Desfazer último ponto</button>)}
           </div>)}
-          {resultadoMedicao&&(<div style={{padding:"10px 12px",background:C.card,border:`1px solid ${C.borderLight}`,borderRadius:10,marginBottom:8}}>
-            <div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>{resultadoMedicao.tipo==="area"?"📐 Área medida":"📏 Distância total"}</div>
-            <div style={{fontSize:20,fontWeight:900,color:resultadoMedicao.tipo==="area"?C.accent:C.blue}}>{resultadoMedicao.valor}</div>
+
+          {/* Resultado */}
+          {resultadoMedicao&&(<div style={{padding:"10px 12px",background:C.card,border:`1px solid ${resultadoMedicao.tipo==="desenho"?C.orange:resultadoMedicao.tipo==="area"?C.accent:C.blue}30`,borderRadius:10,marginBottom:6}}>
+            <div style={{fontSize:10,color:C.textMuted,marginBottom:3}}>
+              {resultadoMedicao.tipo==="desenho"?"🟠 Área desenhada":resultadoMedicao.tipo==="area"?resultadoMedicao.fonte==="CAR"?"🌿 Área do CAR":"📐 Área medida":"📏 Distância total"}
+              {resultadoMedicao.pontos&&<span style={{color:C.textDim}}> · {resultadoMedicao.pontos} pts</span>}
+            </div>
+            <div style={{fontSize:20,fontWeight:900,color:resultadoMedicao.tipo==="desenho"?C.orange:resultadoMedicao.tipo==="area"?C.accent:C.blue}}>{resultadoMedicao.valor}</div>
+            {resultadoMedicao.ha&&resultadoMedicao.tipo!=="distancia"&&(
+              <div style={{fontSize:10,color:C.textMuted,marginTop:2}}>
+                = {(resultadoMedicao.ha*10000).toFixed(0)} m² · {(resultadoMedicao.ha*2.47105).toFixed(2)} acres
+              </div>
+            )}
           </div>)}
-          {modoMedicao&&(<button onClick={pararMedicao} style={{width:"100%",padding:"6px 0",borderRadius:8,border:`1px solid ${C.red}40`,background:`${C.red}15`,color:C.red,fontSize:11,fontWeight:600,cursor:"pointer"}}>✕ Cancelar medição</button>)}
-          {!modoMedicao&&!resultadoMedicao&&<div style={{fontSize:10,color:C.textDim,fontStyle:"italic"}}>Selecione uma ferramenta e clique no mapa</div>}
+
+          {/* Ações medição */}
+          <div style={{display:"flex",gap:5}}>
+            {(modoMedicao||resultadoMedicao)&&<button onClick={pararMedicao} style={{flex:1,padding:"5px 0",borderRadius:8,border:`1px solid ${C.red}40`,background:`${C.red}15`,color:C.red,fontSize:10,fontWeight:600,cursor:"pointer"}}>✕ Limpar</button>}
+          </div>
+
+          {/* Desenhar por tamanho */}
+          <div style={{marginTop:10,padding:"10px 10px",background:`${C.orange}08`,border:`1px solid ${C.orange}20`,borderRadius:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.orange,marginBottom:6}}>🟠 Desenhar área por tamanho</div>
+            <div style={{display:"flex",gap:4,marginBottom:6}}>
+              <input value={tamanhoDesenho} onChange={e=>setTamanhoDesenho(e.target.value)} placeholder="Ex: 5" style={{flex:1,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px",color:C.text,fontSize:12,outline:"none"}} onKeyDown={e=>e.key==="Enter"&&desenharPorTamanho()}/>
+              <select value={unidadeDesenho} onChange={e=>setUnidadeDesenho(e.target.value)} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 6px",color:C.text,fontSize:11,outline:"none",cursor:"pointer"}}>
+                <option value="ha">ha</option>
+                <option value="m2">m²</option>
+                <option value="alq">alq</option>
+              </select>
+            </div>
+            <button onClick={desenharPorTamanho} style={{width:"100%",padding:"7px 0",borderRadius:6,background:`${C.orange}20`,border:`1px solid ${C.orange}40`,color:C.orange,fontSize:11,fontWeight:700,cursor:"pointer"}}>📐 Desenhar no mapa</button>
+            <div style={{fontSize:9,color:C.textDim,marginTop:4}}>Desenha no centro da tela atual</div>
+          </div>
+
+          {!modoMedicao&&!resultadoMedicao&&<div style={{fontSize:10,color:C.textDim,fontStyle:"italic",marginTop:8}}>🌿 = medir área do CAR automaticamente</div>}
         </div>
 
         {/* Coordenadas */}
