@@ -661,7 +661,37 @@ export default function MapaPage({ dadosConsulta }) {
     const bounds = geoLayer.getBounds(), center = bounds.getCenter();
     adicionarMarcador(map, L, center.lat, center.lng, dados);
     map.fitBounds(bounds, { padding:[40,40] });
-    // ✅ Carrega vizinhos automaticamente após 1s
+
+    // ✅ Clique no polígono CAR → mostra área + perímetro + coordenadas
+    geoLayer.on("click", (e) => {
+      L.DomEvent.stopPropagation(e);
+      try {
+        const coords = geometria.type === "MultiPolygon" ? geometria.coordinates[0][0] : geometria.coordinates[0];
+        const pontos = coords.map(c => [c[1], c[0]]);
+        const ha = calcularAreaHa(pontos);
+        let perM = 0;
+        for (let i = 0; i < pontos.length - 1; i++) perM += calcularDistanciaM(pontos[i][0],pontos[i][1],pontos[i+1][0],pontos[i+1][1]);
+        const perKm = (perM/1000).toFixed(3);
+        const lats = pontos.map(p=>p[0]), lngs = pontos.map(p=>p[1]);
+        const centLat = ((Math.min(...lats)+Math.max(...lats))/2).toFixed(6);
+        const centLng = ((Math.min(...lngs)+Math.max(...lngs))/2).toFixed(6);
+        L.popup({ maxWidth:280, className:"" })
+          .setLatLng(e.latlng)
+          .setContent(`<div style="font-family:sans-serif;padding:6px">
+            <div style="font-weight:800;font-size:14px;color:#16a34a;margin-bottom:10px">🌿 Polígono CAR</div>
+            <div style="font-size:13px;margin-bottom:4px">📐 <strong>Área:</strong> ${formatarArea(ha)}</div>
+            <div style="font-size:11px;color:#666;margin-bottom:6px;padding-left:20px">${(ha*10000).toFixed(0)} m² &nbsp;·&nbsp; ${(ha*2.47105).toFixed(2)} acres</div>
+            <div style="font-size:13px;margin-bottom:4px">📏 <strong>Perímetro:</strong> ${perKm} km</div>
+            <div style="font-size:11px;color:#666;margin-bottom:6px;padding-left:20px">${perM.toFixed(0)} metros</div>
+            <div style="font-size:13px;margin-bottom:2px">📍 <strong>Coordenadas:</strong></div>
+            <div style="font-size:11px;color:#666;padding-left:20px">Lat: ${centLat}°</div>
+            <div style="font-size:11px;color:#666;padding-left:20px">Lng: ${centLng}°</div>
+          </div>`)
+          .openOn(map);
+      } catch {}
+    });
+
+    // ✅ Vizinhos automáticos após 1s
     const car = dados.car || dados.sicar?.car;
     if (car && center.lat && center.lng) {
       setTimeout(async () => {
