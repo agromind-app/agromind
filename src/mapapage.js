@@ -491,20 +491,46 @@ export default function MapaPage({ dadosConsulta }) {
     if (leafletMap.current) leafletMap.current.getContainer().style.cursor = "";
   };
 
-  // ── Medir área do CAR atual
+  // ── Medir área do CAR atual — mostra popup com área + perímetro + coordenadas
   const medirAreaCAR = () => {
-    if (!dadosReais?.sicar?.geometria && !dadosReais?.sigef?.geometria) {
-      alert("Carregue um imóvel primeiro.");
-      return;
-    }
-    const geom = dadosReais.sicar?.geometria || dadosReais.sigef?.geometria;
-    if (!geom) return;
+    const geom = dadosReais?.sicar?.geometria || dadosReais?.sigef?.geometria;
+    if (!geom) { alert("Carregue um imóvel primeiro."); return; }
     try {
       const coords = geom.type === "MultiPolygon" ? geom.coordinates[0][0] : geom.coordinates[0];
       const pontos = coords.map(c => [c[1], c[0]]);
       const ha = calcularAreaHa(pontos);
-      setResultadoMedicao({ tipo:"area", valor:formatarArea(ha), ha, pontos:pontos.length, fonte:"CAR" });
-    } catch { alert("Não foi possível calcular a área do polígono."); }
+      // Perímetro
+      let perM = 0;
+      for (let i = 0; i < pontos.length - 1; i++) perM += calcularDistanciaM(pontos[i][0],pontos[i][1],pontos[i+1][0],pontos[i+1][1]);
+      const perKm = (perM / 1000).toFixed(3);
+      // Centroide
+      const lats = pontos.map(p=>p[0]), lngs = pontos.map(p=>p[1]);
+      const centLat = ((Math.min(...lats)+Math.max(...lats))/2).toFixed(6);
+      const centLng = ((Math.min(...lngs)+Math.max(...lngs))/2).toFixed(6);
+      setResultadoMedicao({
+        tipo:"car", valor:formatarArea(ha), ha,
+        perimetro:`${perKm} km (${perM.toFixed(0)} m)`,
+        coordenadas:`${centLat}°, ${centLng}°`,
+        pontos: pontos.length,
+        m2: (ha*10000).toFixed(0),
+        acres: (ha*2.47105).toFixed(2),
+      });
+      // Popup no mapa
+      if (leafletMap.current && window.L) {
+        const map = leafletMap.current, L = window.L;
+        const center = [parseFloat(centLat), parseFloat(centLng)];
+        L.popup({ maxWidth:260 }).setLatLng(center).setContent(
+          `<div style="font-family:sans-serif;padding:4px">
+            <div style="font-weight:800;font-size:14px;color:#16a34a;margin-bottom:8px">🌿 Polígono CAR</div>
+            <div style="font-size:12px;margin-bottom:4px">📐 <strong>Área:</strong> ${formatarArea(ha)}</div>
+            <div style="font-size:12px;margin-bottom:4px">&nbsp;&nbsp;&nbsp;&nbsp; ${(ha*10000).toFixed(0)} m² · ${(ha*2.47105).toFixed(2)} acres</div>
+            <div style="font-size:12px;margin-bottom:4px">📏 <strong>Perímetro:</strong> ${perKm} km</div>
+            <div style="font-size:12px;margin-bottom:4px">📍 <strong>Centro:</strong> ${centLat}°</div>
+            <div style="font-size:12px;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${centLng}°</div>
+          </div>`
+        ).openOn(map);
+      }
+    } catch { alert("Não foi possível calcular."); }
   };
 
   // ── Desenhar área por tamanho
@@ -826,17 +852,29 @@ export default function MapaPage({ dadosConsulta }) {
           </div>)}
 
           {/* Resultado */}
-          {resultadoMedicao&&(<div style={{padding:"10px 12px",background:C.card,border:`1px solid ${resultadoMedicao.tipo==="desenho"?C.orange:resultadoMedicao.tipo==="area"?C.accent:C.blue}30`,borderRadius:10,marginBottom:6}}>
+          {resultadoMedicao&&(<div style={{padding:"10px 12px",background:C.card,border:`1px solid ${resultadoMedicao.tipo==="desenho"?C.orange:resultadoMedicao.tipo==="car"?C.accent:resultadoMedicao.tipo==="area"?C.accent:C.blue}30`,borderRadius:10,marginBottom:6}}>
             <div style={{fontSize:10,color:C.textMuted,marginBottom:3}}>
-              {resultadoMedicao.tipo==="desenho"?"🟠 Área desenhada":resultadoMedicao.tipo==="area"?resultadoMedicao.fonte==="CAR"?"🌿 Área do CAR":"📐 Área medida":"📏 Distância total"}
-              {resultadoMedicao.pontos&&<span style={{color:C.textDim}}> · {resultadoMedicao.pontos} pts</span>}
+              {resultadoMedicao.tipo==="car"?"🌿 Polígono CAR":resultadoMedicao.tipo==="desenho"?"🟠 Área desenhada":resultadoMedicao.tipo==="area"?"📐 Área medida":"📏 Distância total"}
+              {resultadoMedicao.pontos&&<span style={{color:C.textDim}}> · {resultadoMedicao.pontos} vértices</span>}
             </div>
-            <div style={{fontSize:20,fontWeight:900,color:resultadoMedicao.tipo==="desenho"?C.orange:resultadoMedicao.tipo==="area"?C.accent:C.blue}}>{resultadoMedicao.valor}</div>
-            {resultadoMedicao.ha&&resultadoMedicao.tipo!=="distancia"&&(
-              <div style={{fontSize:10,color:C.textMuted,marginTop:2}}>
-                = {(resultadoMedicao.ha*10000).toFixed(0)} m² · {(resultadoMedicao.ha*2.47105).toFixed(2)} acres
+            <div style={{fontSize:22,fontWeight:900,color:resultadoMedicao.tipo==="desenho"?C.orange:resultadoMedicao.tipo==="distancia"?C.blue:C.accent,marginBottom:4}}>{resultadoMedicao.valor}</div>
+            {resultadoMedicao.ha&&(<>
+              <div style={{fontSize:10,color:C.textMuted}}>= {resultadoMedicao.m2||((resultadoMedicao.ha*10000).toFixed(0))} m² · {resultadoMedicao.acres||(resultadoMedicao.ha*2.47105).toFixed(2)} acres</div>
+            </>)}
+            {resultadoMedicao.perimetro&&(<div style={{fontSize:10,color:C.textMuted,marginTop:3}}>📏 Perímetro: <strong style={{color:C.text}}>{resultadoMedicao.perimetro}</strong></div>)}
+            {resultadoMedicao.coordenadas&&(<div style={{fontSize:10,color:C.textMuted,marginTop:3}}>📍 Centro: <strong style={{color:C.text}}>{resultadoMedicao.coordenadas}</strong></div>)}
+            {resultadoMedicao.tipo==="area"&&resultadoMedicao.pontos>=3&&(<>
+              <div style={{fontSize:10,color:C.textMuted,marginTop:3}}>
+                📏 Perímetro: <strong style={{color:C.text}}>{(()=>{
+                  const pts=medicaoPontosRef.current;
+                  if(!pts.length)return"—";
+                  let p=0;for(let i=0;i<pts.length-1;i++)p+=calcularDistanciaM(pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1]);
+                  p+=calcularDistanciaM(pts[pts.length-1][0],pts[pts.length-1][1],pts[0][0],pts[0][1]);
+                  return formatarDistancia(p);
+                })()}</strong>
               </div>
-            )}
+              {medicaoPontosRef.current.length>0&&(<div style={{fontSize:10,color:C.textMuted,marginTop:3}}>📍 1º vértice: <strong style={{color:C.text}}>{medicaoPontosRef.current[0][0].toFixed(5)}°, {medicaoPontosRef.current[0][1].toFixed(5)}°</strong></div>)}
+            </>)}
           </div>)}
 
           {/* Ações medição */}
