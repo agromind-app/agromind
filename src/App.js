@@ -137,7 +137,18 @@ async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, 
   } catch (e) { return { encontrado: false, erro: e.message }; }
 }
 
-async function buscarSIGEFFrontend({ car, ccir }) {
+async function buscarSICARPorGPS(lat, lng) {
+  const buffer = 0.005; // ~500m
+  const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
+  const filtro = `BBOX(geom,${bbox})`;
+  for (const uf of UFS_BR) {
+    try {
+      const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro);
+      if (features.length > 0) return parsearFeatureSICAR(features[0], null, null, null);
+    } catch {}
+  }
+  return { encontrado: false, mensagem: "Nenhum imóvel CAR encontrado nesta localização." };
+}
   const q = car || ccir; if (!q) return null;
   try {
     const resp = await fetch(`https://sigef.incra.gov.br/geo/parcela/exportar/geojson/?q=${encodeURIComponent(q)}`);
@@ -318,8 +329,14 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
       else{body={car:val};}
 
       // ✅ FASE 1: SICAR + SIGEF direto no frontend via Cloudflare — SEM TIMEOUT 504
+      let sicarPromise;
+      if (tipo === "gps" || tipo === "endereco") {
+        sicarPromise = buscarSICARPorGPS(coordsGPS.lat, coordsGPS.lng);
+      } else {
+        sicarPromise = buscarSICARFrontend(body);
+      }
       const [sicar, sigef] = await Promise.all([
-        buscarSICARFrontend(body),
+        sicarPromise,
         buscarSIGEFFrontend({ car: body.car, ccir: body.ccir }),
       ]);
 
