@@ -137,22 +137,69 @@ async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, 
   } catch (e) { return { encontrado: false, erro: e.message }; }
 }
 
+// ─── DETECTAR ESTADO PELO GPS ────────────────────────────────────
+async function detectarEstadoPorGPS(lat, lng) {
+  try {
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const estado = data.address?.state_code || data.address?.["ISO3166-2-lvl4"];
+    if (estado) {
+      // Extrai só as 2 letras do estado (ex: "BR-MA" → "ma")
+      const uf = estado.replace("BR-","").toLowerCase().trim();
+      if (UFS_BR.includes(uf)) return uf;
+    }
+    // Tenta pelo nome do estado
+    const nomeEstado = data.address?.state || "";
+    const mapaEstados = {
+      "Maranhão":"ma","Mato Grosso":"mt","Pará":"pa","Bahia":"ba","Goiás":"go",
+      "Minas Gerais":"mg","São Paulo":"sp","Paraná":"pr","Tocantins":"to",
+      "Mato Grosso do Sul":"ms","Piauí":"pi","Rondônia":"ro","Amazonas":"am",
+      "Roraima":"rr","Acre":"ac","Amapá":"ap","Rio de Janeiro":"rj",
+      "Espírito Santo":"es","Santa Catarina":"sc","Rio Grande do Sul":"rs",
+      "Paraíba":"pb","Pernambuco":"pe","Ceará":"ce","Rio Grande do Norte":"rn",
+      "Alagoas":"al","Sergipe":"se","Distrito Federal":"df"
+    };
+    return mapaEstados[nomeEstado] || null;
+  } catch { return null; }
+}
+
 async function buscarSICARPorGPS(lat, lng) {
-  // Tenta raios crescentes: 1km, 5km, 10km
-  const buffers = [0.009, 0.045, 0.09];
-  // Estados priorizados por densidade de CARs
-  const estadosPrio = ["ma","mt","pa","ba","go","mg","sp","pr","to","ms","pi","ro","am","rr","ac","ap","rj","es","sc","rs","pb","pe","ce","rn","al","se","df"];
+  // 1. Detecta o estado pelo GPS via Nominatim (rápido!)
+  const ufDetectada = await detectarEstadoPorGPS(lat, lng);
   
-  for (const buffer of buffers) {
-    const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
-    const filtro = `BBOX(geom,${bbox})`;
-    for (const uf of estadosPrio) {
+  const buffers = [0.009, 0.045, 0.09]; // 1km, 5km, 10km
+  
+  // 2. Tenta primeiro no estado detectado
+  if (ufDetectada) {
+    for (const buffer of buffers) {
+      const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
       try {
-        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro);
+        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, `BBOX(geom,${bbox})`);
         if (features.length > 0) return parsearFeatureSICAR(features[0], null, null, null);
       } catch {}
     }
   }
+  
+  // 3. Fallback: estados vizinhos prováveis
+  const estadosFallback = ["ma","mt","pa","ba","go","mg","to","pi","ro","ms","sp","pr"];
+  const estados = ufDetectada 
+    ? estadosFallback.filter(u => u !== ufDetectada)
+    : estadosFallback;
+    
+  for (const buffer of buffers) {
+    const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
+    for (const uf of estados) {
+      try {
+        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, `BBOX(geom,${bbox})`);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], null, null, null);
+      } catch {}
+    }
+  }
+  
   return { encontrado: false, mensagem: "Nenhum imóvel CAR encontrado nesta localização." };
 }
   const q = car || ccir; if (!q) return null;
