@@ -338,6 +338,7 @@ export default function MapaPage({ dadosConsulta }) {
   const medicaoLayerRef = useRef(null);
   const medicaoPontosRef = useRef([]);
   const medicaoMarkersRef = useRef([]);
+  const modoMedicaoRef = useRef(null);
 
   const [camadas, setCamadas] = useState(CAMADAS);
   const [tipoMapa, setTipoMapa] = useState("satellite");
@@ -435,12 +436,14 @@ export default function MapaPage({ dadosConsulta }) {
     if (modoMedicao === modo) { pararMedicao(); return; }
     pararMedicao();
     setModoMedicao(modo);
+    modoMedicaoRef.current = modo;
     setResultadoMedicao(null);
     if (leafletMap.current) leafletMap.current.getContainer().style.cursor = "crosshair";
   };
 
   const pararMedicao = () => {
     setModoMedicao(null);
+    modoMedicaoRef.current = null;
     setResultadoMedicao(null);
     medicaoPontosRef.current = [];
     limparMedicaoLayers();
@@ -675,8 +678,9 @@ export default function MapaPage({ dadosConsulta }) {
     adicionarMarcador(map, L, center.lat, center.lng, dados);
     map.fitBounds(bounds, { padding:[40,40] });
 
-    // ✅ Clique no polígono CAR → mostra área + perímetro + coordenadas
+    // ✅ Clique no polígono CAR → mostra área + perímetro + coordenadas (só fora do modo medição)
     geoLayer.on("click", (e) => {
+      if (modoMedicaoRef.current) return; // não abre popup durante medição
       L.DomEvent.stopPropagation(e);
       try {
         const coords = geometria.type === "MultiPolygon" ? geometria.coordinates[0][0] : geometria.coordinates[0];
