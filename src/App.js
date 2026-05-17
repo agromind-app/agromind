@@ -168,39 +168,30 @@ async function detectarEstadoPorGPS(lat, lng) {
 }
 
 async function buscarSICARPorGPS(lat, lng) {
-  // 1. Detecta o estado pelo GPS via Nominatim (rápido!)
-  const ufDetectada = await detectarEstadoPorGPS(lat, lng);
+  // 1. Detecta estado via Nominatim
+  const uf = await detectarEstadoPorGPS(lat, lng);
+  if (!uf) return { encontrado: false, mensagem: "Estado não detectado." };
+
+  // 2. Usa a API de consulta pública do SICAR por coordenada
+  const buffers = [0.009, 0.04, 0.09];
   
-  const buffers = [0.009, 0.045, 0.09]; // 1km, 5km, 10km
-  
-  // 2. Tenta primeiro no estado detectado
-  if (ufDetectada) {
-    for (const buffer of buffers) {
-      const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
-      try {
-        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, `BBOX(geom,${bbox})`);
-        if (features.length > 0) return parsearFeatureSICAR(features[0], null, null, null);
-      } catch {}
-    }
-  }
-  
-  // 3. Fallback: estados vizinhos prováveis
-  const estadosFallback = ["ma","mt","pa","ba","go","mg","to","pi","ro","ms","sp","pr"];
-  const estados = ufDetectada 
-    ? estadosFallback.filter(u => u !== ufDetectada)
-    : estadosFallback;
-    
   for (const buffer of buffers) {
     const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
-    for (const uf of estados) {
-      try {
-        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, `BBOX(geom,${bbox})`);
+    try {
+      // Tenta via Cloudflare proxy (sem timeout)
+      const sicarUrl = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=sicar:sicar_imoveis_${uf}&CQL_FILTER=BBOX(geom,${bbox})&outputFormat=application%2Fjson&maxFeatures=1`;
+      const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(sicarUrl)}`, {
+        signal: AbortSignal.timeout(15000)
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const features = data.features || [];
         if (features.length > 0) return parsearFeatureSICAR(features[0], null, null, null);
-      } catch {}
-    }
+      }
+    } catch {}
   }
-  
-  return { encontrado: false, mensagem: "Nenhum imóvel CAR encontrado nesta localização." };
+
+  return { encontrado: false, mensagem: `Nenhum imóvel CAR encontrado em ${uf.toUpperCase()}.` };
 }
   const q = car || ccir; if (!q) return null;
   try {
