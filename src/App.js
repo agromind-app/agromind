@@ -68,7 +68,25 @@ async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, 
   try {
     if (!car && !ccir && !itr && !proprietario && !nomeFazenda) return null;
 
-    let filtro = "", ufDetectada = null;
+    // ── Extrai UF e município do formato "Nome - UF - Município"
+    function parsearBusca(val) {
+      if (!val) return { termo: val, uf: null, municipio: null };
+      const partes = val.split("-").map(p => p.trim());
+      if (partes.length >= 2) {
+        const possUF = partes[partes.length >= 3 ? partes.length-2 : 1].trim().toUpperCase();
+        if (possUF.length === 2 && UFS_BR.includes(possUF.toLowerCase())) {
+          return {
+            termo: partes[0].trim(),
+            uf: possUF.toLowerCase(),
+            municipio: partes.length >= 3 ? partes[partes.length-1].trim() : null
+          };
+        }
+      }
+      return { termo: val, uf: null, municipio: null };
+    }
+
+    let filtro = "", ufDetectada = null, municipioFiltro = null;
+
     if (car) {
       const carNorm = car.toUpperCase().replace(/\./g, "-");
       filtro = `cod_imovel = '${carNorm}'`;
@@ -79,27 +97,35 @@ async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, 
     } else if (itr) {
       filtro = `num_nirf = '${itr.replace(/[.\-\s]/g,"")}'`;
     } else if (proprietario) {
-      filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
+      const p = parsearBusca(proprietario);
+      filtro = `nom_proprietario ILIKE '%${p.termo}%'`;
+      if (p.municipio) filtro += ` AND nom_municipio ILIKE '%${p.municipio}%'`;
+      ufDetectada = p.uf;
     } else if (nomeFazenda) {
-      filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
+      const p = parsearBusca(nomeFazenda);
+      filtro = `nom_imovel ILIKE '%${p.termo}%'`;
+      if (p.municipio) filtro += ` AND nom_municipio ILIKE '%${p.municipio}%'`;
+      ufDetectada = p.uf;
     } else return null;
 
-    // 1. CAR com UF detectada
-    if (car && ufDetectada) {
+    // 1. CAR ou busca com UF detectada — só 1 estado
+    if (ufDetectada) {
       try {
         const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, filtro);
         if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
       } catch {}
-      // Tenta ILIKE como fallback
-      try {
-        const carBase = car.toUpperCase().replace(/\./g,"-").split("-").slice(0,2).join("-");
-        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, `cod_imovel ILIKE '${carBase}%'`);
-        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
-      } catch {}
+      // Fallback ILIKE para CAR
+      if (car) {
+        try {
+          const carBase = car.toUpperCase().replace(/\./g,"-").split("-").slice(0,2).join("-");
+          const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, `cod_imovel ILIKE '${carBase}%'`);
+          if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+        } catch {}
+      }
+      return { encontrado: false, mensagem: `Imóvel não localizado no SICAR (${ufDetectada.toUpperCase()}).` };
     }
 
-    // 2. Busca em todos os estados (ccir, itr, proprietario, fazenda, ou car sem UF)
-    // Percorre UM estado por vez para garantir que não pula resultados
+    // 2. Sem UF — percorre todos os estados
     for (const uf of UFS_BR) {
       try {
         const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro);
@@ -213,7 +239,7 @@ function calcularScore(sicar, sigef, ibama=null, prodes=null){
   return{valor:Math.max(0,Math.min(100,score)),nivel:score>=70?"Baixo Risco":score>=40?"Risco Médio":"Alto Risco",cor:score>=70?"#22c55e":score>=40?"#fbbf24":"#ef4444",fatores};
 }
 
-const TIPOS_BUSCA=[{id:"car",label:"CAR",icon:"📋",placeholder:"Ex: MT-5107040-9B4D7A3E2F1C6B8A0D5E9F3C"},{id:"itr",label:"ITR",icon:"💰",placeholder:"Ex: 12.345.678-9"},{id:"ccir",label:"CCIR",icon:"📄",placeholder:"Ex: 800.429.7412-9"},{id:"gps",label:"GPS",icon:"📍",placeholder:"Ex: -11.8456, -55.1987"},{id:"fazenda",label:"Fazenda",icon:"🌾",placeholder:"Ex: Fazenda Horizonte Verde"},{id:"endereco",label:"Endereço",icon:"🏠",placeholder:"Ex: Sinop, Mato Grosso"},{id:"proprietario",label:"Proprietário",icon:"👤",placeholder:"Ex: João da Silva"}];
+const TIPOS_BUSCA=[{id:"car",label:"CAR",icon:"📋",placeholder:"Ex: MT-5107040-9B4D7A3E2F1C6B8A0D5E9F3C"},{id:"itr",label:"ITR",icon:"💰",placeholder:"Ex: 12.345.678-9"},{id:"ccir",label:"CCIR",icon:"📄",placeholder:"Ex: 800.429.7412-9"},{id:"gps",label:"GPS",icon:"📍",placeholder:"Ex: -11.8456, -55.1987"},{id:"fazenda",label:"Fazenda",icon:"🌾",placeholder:"Ex: Fazenda Santa Maria - MA - Buriticupu"},{id:"endereco",label:"Endereço",icon:"🏠",placeholder:"Ex: Sinop, Mato Grosso"},{id:"proprietario",label:"Proprietário",icon:"👤",placeholder:"Ex: João Silva - MA - Buriticupu"}];
 const NAV=[{section:"Principal",items:[{icon:"⊞",label:"Dashboard",id:"dashboard"},{icon:"🔍",label:"Consultar Imóvel",id:"consulta"},{icon:"🗺️",label:"Mapa Interativo",id:"mapa"},{icon:"🤖",label:"IA & Score",id:"ia"}]},{section:"Ambiental",items:[{icon:"🌿",label:"Embargos IBAMA",id:"embargos"},{icon:"📡",label:"PRODES/INPE",id:"prodes"},{icon:"💧",label:"Precipitação",id:"precipitacao"}]},{section:"Sistema",items:[{icon:"💬",label:"WhatsApp Bot",id:"whatsapp"},{icon:"💳",label:"Planos & Preços",id:"planos"},{icon:"🛡️",label:"Painel Admin",id:"admin"}]}];
 const BOTTOM_NAV=[{icon:"⊞",label:"Início",id:"dashboard"},{icon:"🗺️",label:"Mapa",id:"mapa"},{icon:"🔍",label:"Buscar",id:"consulta"},{icon:"💳",label:"Planos",id:"planos"},{icon:"🛡️",label:"Admin",id:"admin"}];
 
