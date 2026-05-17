@@ -66,7 +66,6 @@ function traduzirSituacao(cod) {
 
 async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, lat, lng }) {
   try {
-    // Busca por GPS — retorna só coordenadas
     if (!car && !ccir && !itr && !proprietario && !nomeFazenda) return null;
 
     let filtro = "", ufDetectada = null;
@@ -75,47 +74,39 @@ async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, 
       filtro = `cod_imovel = '${carNorm}'`;
       const match = car.match(/^([A-Z]{2})-/i);
       if (match) ufDetectada = match[1].toLowerCase();
-    } else if (ccir) { filtro = `num_ccir = '${ccir.replace(/[.\-\s]/g,"")}'`;
-    } else if (itr)  { filtro = `num_nirf = '${itr.replace(/[.\-\s]/g,"")}'`;
-    } else if (proprietario) { filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
-    } else if (nomeFazenda)  { filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
+    } else if (ccir) {
+      filtro = `num_ccir = '${ccir.replace(/[.\-\s]/g,"")}'`;
+    } else if (itr) {
+      filtro = `num_nirf = '${itr.replace(/[.\-\s]/g,"")}'`;
+    } else if (proprietario) {
+      filtro = `nom_proprietario ILIKE '%${proprietario}%'`;
+    } else if (nomeFazenda) {
+      filtro = `nom_imovel ILIKE '%${nomeFazenda}%'`;
     } else return null;
 
-    // 1. Tenta CAR com pontos no formato original
-    if (car && car.includes(".")) {
-      try {
-        const uf = ufDetectada || "ma";
-        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, `cod_imovel = '${car.toUpperCase()}'`);
-        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
-      } catch {}
-    }
-
-    // 2. Tenta com estado detectado pelo prefixo do CAR
-    if (ufDetectada) {
+    // 1. CAR com UF detectada
+    if (car && ufDetectada) {
       try {
         const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, filtro);
         if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
       } catch {}
-      // 2b. ILIKE para variações
+      // Tenta ILIKE como fallback
       try {
-        const carBase = car?.toUpperCase().replace(/\./g,"-").split("-").slice(0,2).join("-");
-        if (carBase) {
-          const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, `cod_imovel ILIKE '${carBase}%'`);
-          if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
-        }
+        const carBase = car.toUpperCase().replace(/\./g,"-").split("-").slice(0,2).join("-");
+        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${ufDetectada}`, `cod_imovel ILIKE '${carBase}%'`);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
       } catch {}
     }
 
-    // 3. Todos os estados (ccir/itr/proprietario/fazenda)
-    if (!car) {
-      for (let i = 0; i < UFS_BR.length; i += 5) {
-        const grupo = UFS_BR.slice(i, i + 5);
-        const resultados = await Promise.allSettled(grupo.map(uf => consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro)));
-        for (const r of resultados) {
-          if (r.status === "fulfilled" && r.value.length > 0) return parsearFeatureSICAR(r.value[0], car, ccir, itr);
-        }
-      }
+    // 2. Busca em todos os estados (ccir, itr, proprietario, fazenda, ou car sem UF)
+    // Percorre UM estado por vez para garantir que não pula resultados
+    for (const uf of UFS_BR) {
+      try {
+        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], car, ccir, itr);
+      } catch {}
     }
+
     return { encontrado: false, mensagem: "Imóvel não localizado no SICAR." };
   } catch (e) { return { encontrado: false, erro: e.message }; }
 }
