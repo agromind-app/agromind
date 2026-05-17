@@ -138,14 +138,20 @@ async function buscarSICARFrontend({ car, ccir, itr, proprietario, nomeFazenda, 
 }
 
 async function buscarSICARPorGPS(lat, lng) {
-  const buffer = 0.005; // ~500m
-  const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
-  const filtro = `BBOX(geom,${bbox})`;
-  for (const uf of UFS_BR) {
-    try {
-      const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro);
-      if (features.length > 0) return parsearFeatureSICAR(features[0], null, null, null);
-    } catch {}
+  // Tenta raios crescentes: 1km, 5km, 10km
+  const buffers = [0.009, 0.045, 0.09];
+  // Estados priorizados por densidade de CARs
+  const estadosPrio = ["ma","mt","pa","ba","go","mg","sp","pr","to","ms","pi","ro","am","rr","ac","ap","rj","es","sc","rs","pb","pe","ce","rn","al","se","df"];
+  
+  for (const buffer of buffers) {
+    const bbox = `${lng-buffer},${lat-buffer},${lng+buffer},${lat+buffer}`;
+    const filtro = `BBOX(geom,${bbox})`;
+    for (const uf of estadosPrio) {
+      try {
+        const features = await consultarSICARFrontend(`sicar:sicar_imoveis_${uf}`, filtro);
+        if (features.length > 0) return parsearFeatureSICAR(features[0], null, null, null);
+      } catch {}
+    }
   }
   return { encontrado: false, mensagem: "Nenhum imóvel CAR encontrado nesta localização." };
 }
