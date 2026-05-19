@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /usuarios/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      match /historico/{doc} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    match /cache_car/{doc} {
+      allow read, write: if false;
+    }
+    match /banco_imoveis/{doc} {
+      allow read, write: if false;
+    }
+    match /indice_ccir/{doc} {
+      allow read, write: if false;
+    }
+    match /indice_itr/{doc} {
+      allow read, write: if false;
+    }
+    match /indice_nome/{doc} {
+      allow read, write: if false;
+    }
+    match /indice_proprietario/{doc} {
+      allow read, write: if false;
+    }
+  }
+}
