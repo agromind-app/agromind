@@ -7,6 +7,55 @@ import MapaPage from "./mapapage";
 const C={bg:"#0a0f0a",surface:"#0f1a0f",card:"#111d11",border:"#1e3a1e",borderLight:"#2a4f2a",green1:"#0d5c2e",green2:"#12803f",green3:"#16a34a",accent:"#22c55e",accentBright:"#4ade80",text:"#e8f5e9",textMuted:"#6b9e6b",textDim:"#3d6b3d",yellow:"#fbbf24",red:"#ef4444",orange:"#f97316",blue:"#3b82f6",purple:"#a78bfa"};
 const S={app:{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'DM Sans','Segoe UI',sans-serif"},chip:(c)=>({display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:20,background:`${c}20`,color:c,border:`1px solid ${c}30`}),card:{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px"},chartBar:(p,c)=>({height:"100%",width:`${p}%`,background:`linear-gradient(90deg,${c}80,${c})`,borderRadius:3}),scoreRing:{width:110,height:110,borderRadius:"50%",background:`conic-gradient(${C.accent} 0deg,${C.accent} ${0.78*360}deg,${C.border} ${0.78*360}deg)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px"},scoreInner:{width:82,height:82,borderRadius:"50%",background:C.card,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"},precipBar:{display:"flex",alignItems:"flex-end",gap:3,height:70,marginBottom:6},precipCol:(h)=>({flex:1,height:`${h}%`,background:`linear-gradient(180deg,${C.blue}90,${C.blue}40)`,borderRadius:"3px 3px 0 0",minHeight:3}),tableTh:{padding:"10px",fontSize:10,fontWeight:700,color:C.textMuted,letterSpacing:"0.5px",textTransform:"uppercase",textAlign:"left"},tableTd:{padding:"10px",fontSize:12,borderBottom:`1px solid ${C.border}`,color:C.text}};
 
+// ─── CRUZAMENTO FIRESTORE (frontend — instantâneo) ───────────────
+function normChave(str) {
+  if (!str) return "";
+  return str.toString()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase().trim();
+}
+
+async function buscarCARnoFirestore(tipo, valor) {
+  try {
+    const colMap = {
+      ccir:         "indice_ccir",
+      itr:          "indice_itr",
+      nomeFazenda:  "indice_nome",
+      proprietario: "indice_proprietario",
+    };
+    const colecao = colMap[tipo];
+    if (!colecao) return null;
+
+    const chave = normChave(valor).substring(0, 30);
+    const snap = await getDoc(doc(db, colecao, chave));
+    if (snap.exists()) return snap.data().car;
+
+    // Busca parcial — tenta prefixo com 10 chars
+    if (tipo === "nomeFazenda" || tipo === "proprietario") {
+      const prefixo = chave.substring(0, 10);
+      const q = query(
+        collection(db, colecao),
+        orderBy("__name__"),
+        limit(1)
+      );
+      const res = await getDocs(q);
+      for (const d of res.docs) {
+        if (d.id.startsWith(prefixo)) return d.data().car;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function buscarDadosFirestore(car) {
+  try {
+    const chave = normChave(car);
+    const snap = await getDoc(doc(db, "banco_imoveis", chave));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+}
+
 // ─── CONSTANTES ───────────────────────────────────────────────────
 const PROXY_URL = "https://agromind-proxy.agromindpro.workers.dev";
 const UFS_BR = ["ac","al","am","ap","ba","ce","df","es","go","ma","mg","ms","mt","pa","pb","pe","pi","pr","rj","rn","ro","rr","rs","sc","se","sp","to"];
@@ -520,27 +569,69 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
       else if(tipo==="fazenda"){body={nomeFazenda:val};}
       else{body={car:val};}
 
-      // ── CCIR, ITR, Nome, Proprietário → vai para o servidor (cruzamento Firestore)
+      // ── CCIR, ITR, Nome, Proprietário → cruzamento no Firestore (instantâneo)
       if(body.ccir || body.itr || body.nomeFazenda || body.proprietario){
-        const respServidor = await fetch("/api/consulta", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const dadosServidor = await respServidor.json();
+        const tipo  = body.ccir ? "ccir" : body.itr ? "itr" : body.nomeFazenda ? "nomeFazenda" : "proprietario";
+        const valor = body.ccir || body.itr || body.nomeFazenda || body.proprietario || "";
 
-        if(dadosServidor.sucesso && (dadosServidor.sicar?.encontrado || dadosServidor.sigef?.encontrado)){
-          const coordLat = dadosServidor.coordenadas?.lat || null;
-          const coordLng = dadosServidor.coordenadas?.lng || null;
-          const carFinal = dadosServidor.car || dadosServidor.sicar?.car || null;
-          const scoreInicial = calcularScore(dadosServidor.sicar, dadosServidor.sigef);
-          const dadosParciais = { ...dadosServidor, score: scoreInicial };
+        // 1. Busca CAR no Firestore
+        const carEncontrado = await buscarCARnoFirestore(tipo, valor);
+
+        if(carEncontrado){
+          // 2. Busca dados completos do banco
+          const dadosBanco = await buscarDadosFirestore(carEncontrado);
+
+          // 3. Busca no SICAR com o CAR (via Cloudflare — sem timeout)
+          const [sicar, sigef] = await Promise.all([
+            buscarSICARporCAR(carEncontrado, body.ccir, body.itr),
+            buscarSIGEFFrontend({ car: carEncontrado, ccir: body.ccir }),
+          ]);
+
+          // 4. Enriquece com dados do banco
+          const sicarFinal = sicar?.encontrado ? {
+            ...sicar,
+            ccir:        sicar.ccir        || dadosBanco?.ccir        || body.ccir || null,
+            nirf:        sicar.nirf        || dadosBanco?.itr         || body.itr  || null,
+            nome:        sicar.nome        || dadosBanco?.nome        || null,
+            municipio:   sicar.municipio   || dadosBanco?.municipio   || null,
+            proprietario:sicar.proprietario|| dadosBanco?.proprietario|| null,
+          } : dadosBanco ? {
+            encontrado:    true,
+            fonteBanco:    true,
+            car:           carEncontrado,
+            nome:          dadosBanco.nome          || "Imóvel Rural",
+            municipio:     dadosBanco.municipio      || "",
+            uf:            dadosBanco.uf             || "",
+            area:          dadosBanco.area           || null,
+            areaHa:        dadosBanco.areaHa         || null,
+            ccir:          dadosBanco.ccir           || dadosBanco.ccirFormatado || body.ccir || null,
+            nirf:          dadosBanco.itr            || body.itr || null,
+            proprietario:  dadosBanco.proprietario   || null,
+            modulos:       dadosBanco.modulos        || null,
+            lat:           dadosBanco.lat            || null,
+            lng:           dadosBanco.lng            || null,
+            situacao:      "AT",
+            situacaoLabel: "Ativo",
+          } : { encontrado: false, mensagem: "Imóvel não localizado." };
+
+          const coordLat = sicarFinal?.lat || sigef?.lat || dadosBanco?.lat || null;
+          const coordLng = sicarFinal?.lng || sigef?.lng || dadosBanco?.lng || null;
+          const scoreInicial = calcularScore(sicarFinal, sigef);
+          const dadosParciais = {
+            sucesso: true,
+            car: carEncontrado,
+            coordenadas: { lat: coordLat, lng: coordLng },
+            sicar: sicarFinal, sigef, score: scoreInicial,
+            cruzamento: { encontrado: true, via: tipo },
+          };
+
           setResultado(dadosParciais);
           onResultado(dadosParciais);
           setFaseBusca("extras");
           setBuscando(false);
+
           const [ibama, prodes, clima, nasa, cotacoes] = await Promise.allSettled([
-            buscarIBAMAFrontend(carFinal),
+            buscarIBAMAFrontend(carEncontrado),
             buscarPRODESFrontend(coordLat, coordLng),
             buscarClimaFrontend(coordLat, coordLng),
             buscarNASAFrontend(coordLat, coordLng),
@@ -553,7 +644,7 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
             nasa:     nasa.status==="fulfilled"     ? nasa.value     : {encontrado:false},
             cotacoes: cotacoes.status==="fulfilled" ? cotacoes.value : {encontrado:false},
           };
-          const scoreCompleto = calcularScore(dadosServidor.sicar, dadosServidor.sigef, extras.ibama, extras.prodes);
+          const scoreCompleto = calcularScore(sicarFinal, sigef, extras.ibama, extras.prodes);
           const dadosCompletos = { ...dadosParciais, ...extras, score: scoreCompleto };
           setResultado(dadosCompletos);
           onResultado(dadosCompletos);
@@ -562,10 +653,12 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
           return;
         }
 
-        // Servidor não achou — mostra mensagem
+        // Não achou no Firestore — tenta SICAR diretamente
         setMsgNaoEncontrado({
-          mensagem: dadosServidor.sicar?.mensagem || dadosServidor.error || "Imóvel não localizado.",
-          dica: dadosServidor.sicar?.dica || null,
+          mensagem: "Imóvel não localizado no banco interno.",
+          dica: tipo === "ccir" ? "Tente buscar pelo CAR ou nome da fazenda." :
+                tipo === "itr"  ? "Tente buscar pelo CAR." :
+                "Tente incluir o estado: 'Fazenda Nome - MA'",
           tipo,
         });
         setBuscando(false);
