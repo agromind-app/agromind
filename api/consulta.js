@@ -171,9 +171,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ sucesso: false, error: "Informe CAR, CCIR, ITR, GPS ou outro critério." });
     }
 
-    // Garante dados iniciais no banco
-    await garantirDadosIniciais();
-
     // Cache
     const chave = chaveCache(body);
     if (chave) {
@@ -181,14 +178,14 @@ export default async function handler(req, res) {
       if (cached) return res.status(200).json({ ...cached, fromCache: true });
     }
 
-    // ── CRUZAMENTO: se não veio CAR, busca no banco interno ──────
+    // ── CRUZAMENTO: se não veio CAR, busca no banco interno PRIMEIRO ──
     let carFinal = car ? car.toUpperCase().replace(/\./g, "-").replace(/[^A-Z0-9\-]/g, "") : null;
     let dadosBanco = null;
     let cruzamento = null;
 
     if (!carFinal && (ccir || itr || nomeFazenda || proprietario)) {
       const tipo  = ccir ? "ccir" : itr ? "itr" : nomeFazenda ? "nomeFazenda" : "proprietario";
-      const valor = (ccir || itr || nomeFazenda || proprietario || "").replace(/\./g,"-");
+      const valor = (ccir || itr || nomeFazenda || proprietario || "");
       const carEncontrado = await buscarCARnoBanco(tipo, valor);
 
       if (carEncontrado) {
@@ -196,10 +193,29 @@ export default async function handler(req, res) {
         dadosBanco = await buscarDadosBanco(norm(carEncontrado));
         cruzamento = { encontrado: true, via: tipo, carOriginal: carEncontrado };
         console.log(`[CRUZAMENTO] ${tipo} → CAR ${carFinal}`);
+
+        // ✅ Se temos dados do banco completos — retorna IMEDIATAMENTE sem varrer SICAR
+        if (dadosBanco && dadosBanco.nome) {
+          const sicarBanco = enriquecerComBanco({ encontrado: false }, dadosBanco, { ccir, itr });
+          const sigefRapido = await buscarSIGEF({ car: carFinal, ccir: null });
+          const score = calcularScore({ sicar: sicarBanco, sigef: sigefRapido });
+          const resultado = {
+            sucesso: true,
+            car: carFinal,
+            coordenadas: { lat: dadosBanco.lat || null, lng: dadosBanco.lng || null },
+            sicar: sicarBanco,
+            sigef: sigefRapido,
+            score,
+            cruzamento,
+            atualizadoEm: new Date().toISOString(),
+          };
+          if (chave) await salvarCache(chave, resultado);
+          return res.status(200).json(resultado);
+        }
       }
     }
 
-    // ── BUSCA SICAR + SIGEF ───────────────────────────────────────
+    // ── BUSCA SICAR + SIGEF (só se não achou no banco) ────────────
     const [sicar, sigef] = await Promise.all([
       buscarSICAR({ car: carFinal, ccir, itr, proprietario, nomeFazenda }),
       buscarSIGEF({ car: carFinal, ccir }),
