@@ -520,7 +520,60 @@ function ConsultaPage({user,usarCredito,creditos,onSemCreditos,setPage,onNaoCada
       else if(tipo==="fazenda"){body={nomeFazenda:val};}
       else{body={car:val};}
 
-      // FASE 1: SICAR + SIGEF em paralelo no frontend
+      // ── CCIR, ITR, Nome, Proprietário → vai para o servidor (cruzamento Firestore)
+      if(body.ccir || body.itr || body.nomeFazenda || body.proprietario){
+        const respServidor = await fetch("/api/consulta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const dadosServidor = await respServidor.json();
+
+        if(dadosServidor.sucesso && (dadosServidor.sicar?.encontrado || dadosServidor.sigef?.encontrado)){
+          const coordLat = dadosServidor.coordenadas?.lat || null;
+          const coordLng = dadosServidor.coordenadas?.lng || null;
+          const carFinal = dadosServidor.car || dadosServidor.sicar?.car || null;
+          const scoreInicial = calcularScore(dadosServidor.sicar, dadosServidor.sigef);
+          const dadosParciais = { ...dadosServidor, score: scoreInicial };
+          setResultado(dadosParciais);
+          onResultado(dadosParciais);
+          setFaseBusca("extras");
+          setBuscando(false);
+          const [ibama, prodes, clima, nasa, cotacoes] = await Promise.allSettled([
+            buscarIBAMAFrontend(carFinal),
+            buscarPRODESFrontend(coordLat, coordLng),
+            buscarClimaFrontend(coordLat, coordLng),
+            buscarNASAFrontend(coordLat, coordLng),
+            buscarCotacoesFrontend(),
+          ]);
+          const extras = {
+            ibama:    ibama.status==="fulfilled"    ? ibama.value    : {encontrado:false,temEmbargo:false,totalEmbargos:0,embargos:[]},
+            prodes:   prodes.status==="fulfilled"   ? prodes.value   : {encontrado:false,temAlerta:false,totalAlertas:0,alertas:[]},
+            clima:    clima.status==="fulfilled"    ? clima.value    : {encontrado:false},
+            nasa:     nasa.status==="fulfilled"     ? nasa.value     : {encontrado:false},
+            cotacoes: cotacoes.status==="fulfilled" ? cotacoes.value : {encontrado:false},
+          };
+          const scoreCompleto = calcularScore(dadosServidor.sicar, dadosServidor.sigef, extras.ibama, extras.prodes);
+          const dadosCompletos = { ...dadosParciais, ...extras, score: scoreCompleto };
+          setResultado(dadosCompletos);
+          onResultado(dadosCompletos);
+          if(user?.uid) await salvarConsultaFS(user.uid, dadosCompletos);
+          setFaseBusca("");
+          return;
+        }
+
+        // Servidor não achou — mostra mensagem
+        setMsgNaoEncontrado({
+          mensagem: dadosServidor.sicar?.mensagem || dadosServidor.error || "Imóvel não localizado.",
+          dica: dadosServidor.sicar?.dica || null,
+          tipo,
+        });
+        setBuscando(false);
+        setFaseBusca("");
+        return;
+      }
+
+      // ── CAR, GPS, Endereço → busca direto no frontend
       let sicarPromise;
       if(tipo==="gps"||tipo==="endereco"){
         sicarPromise=buscarSICARPorGPS(coordsGPS.lat,coordsGPS.lng);
