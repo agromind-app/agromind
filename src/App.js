@@ -27,26 +27,42 @@ async function buscarCARnoFirestore(tipo, valor) {
     const colecao = colMap[tipo];
     if (!colecao) return null;
 
-    const chave = normChave(valor).substring(0, 30);
-    const snap = await getDoc(doc(db, colecao, chave));
-    if (snap.exists()) return snap.data().car;
-
-    // Busca parcial — tenta prefixo com 10 chars
-    if (tipo === "nomeFazenda" || tipo === "proprietario") {
-      const prefixo = chave.substring(0, 10);
-      const q = query(
-        collection(db, colecao),
-        orderBy("__name__"),
-        limit(1)
-      );
-      const res = await getDocs(q);
-      for (const d of res.docs) {
-        if (d.id.startsWith(prefixo)) return d.data().car;
-      }
+    // Tenta várias normalizações
+    const chaves = [
+      normChave(valor).substring(0, 30),
+      valor.replace(/[.\-\s\/]/g, "").substring(0, 30),
+    ];
+    for (const chave of chaves) {
+      try {
+        const snap = await getDoc(doc(db, colecao, chave));
+        if (snap.exists()) { console.log("[FIRESTORE] achou chave:", chave); return snap.data().car; }
+      } catch {}
     }
+
+    // Fallback: varre todos os docs
+    try {
+      const todos = await getDocs(collection(db, colecao));
+      for (const d of todos.docs) {
+        const dd = d.data();
+        if (tipo === "ccir" || tipo === "itr") {
+          const vl = valor.replace(/[.\-\s]/g, "");
+          if (d.id === vl || (dd.ccir || "").replace(/[.\-\s]/g,"") === vl) { console.log("[FIRESTORE] achou varredura:", d.id); return dd.car; }
+        }
+        if (tipo === "nomeFazenda") {
+          const t = normChave(valor.replace(/^(FAZENDA|SITIO|SÍTIO)\s+/i,"")).substring(0,12);
+          if (normChave(dd.nome||"").includes(t)||d.id.includes(t)) return dd.car;
+        }
+        if (tipo === "proprietario") {
+          const t = normChave(valor).substring(0,12);
+          if (normChave(dd.proprietario||"").includes(t)||d.id.includes(t)) return dd.car;
+        }
+      }
+    } catch(e){ console.log("[FIRESTORE] varredura erro:",e.message); }
+
     return null;
-  } catch { return null; }
+  } catch(e){ console.log("[FIRESTORE] erro:",e.message); return null; }
 }
+
 
 async function buscarDadosFirestore(car) {
   try {
