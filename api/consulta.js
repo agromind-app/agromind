@@ -5,6 +5,7 @@ import { credential } from "firebase-admin";
 export const config = { maxDuration: 30 };
 
 const PROXY_URL = "https://agromind-proxy.agromindpro.workers.dev";
+const DADOS_URL = "https://agromind-dados.agromindpro.workers.dev";
 const CACHE_DIAS = 7;
 const UFS_BR = ["ac","al","am","ap","ba","ce","df","es","go","ma","mg","ms","mt","pa","pb","pe","pi","pr","rj","rn","ro","rr","rs","sc","se","sp","to"];
 
@@ -109,7 +110,26 @@ async function buscarDadosBanco(carNorm) {
   } catch { return null; }
 }
 
-// ─── SICAR — PROXY ───────────────────────────────────────────────
+// ─── WORKER DE DADOS AVANÇADO ────────────────────────────────────
+async function buscarDadosAvancados({ car, ccir, itr, lat, lng }) {
+  try {
+    const resp = await fetch(DADOS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ car, ccir, itr, lat, lng }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data.sucesso) return null;
+    return data.dados || null;
+  } catch (e) {
+    console.log("[DADOS_WORKER] erro:", e.message);
+    return null;
+  }
+}
+
+
 async function consultarSICARProxy(typeName, filtro) {
   const url = `https://geoserver.car.gov.br/geoserver/sicar/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=${typeName}&CQL_FILTER=${encodeURIComponent(filtro)}&outputFormat=application%2Fjson&maxFeatures=1`;
   const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(22000) });
@@ -424,11 +444,11 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Busca em paralelo: SICAR + SIGEF + SICAR Público ─────────
-    const [sicar, sigef, sicarPublico] = await Promise.all([
+    // ── Busca em paralelo: SICAR + SIGEF + Worker Avançado ───────
+    const [sicar, sigef, dadosAvancados] = await Promise.all([
       buscarSICAR({ car: carFinal, ccir, itr, proprietario, nomeFazenda }),
       buscarSIGEF({ car: carFinal, ccir }),
-      carFinal ? buscarSICARPublico(carFinal) : Promise.resolve(null),
+      buscarDadosAvancados({ car: carFinal, ccir, itr, lat, lng }),
     ]);
 
     // Banco do CAR encontrado pelo SICAR
@@ -438,6 +458,21 @@ export default async function handler(req, res) {
     }
 
     // ── Enriquece com todas as fontes ─────────────────────────────
+    // Usa dados avançados do Worker como fonte extra
+    const sicarPublico = dadosAvancados ? {
+      fonte: "WORKER_AVANCADO",
+      nome:         dadosAvancados.nome        || null,
+      proprietario: dadosAvancados.proprietario || null,
+      ccir:         dadosAvancados.ccir         || null,
+      nirf:         dadosAvancados.nirf         || null,
+      municipio:    dadosAvancados.municipio    || null,
+      uf:           dadosAvancados.uf           || null,
+      area:         dadosAvancados.area         || null,
+      modulos:      dadosAvancados.modulos      || null,
+      app:          dadosAvancados.app          || null,
+      rl:           dadosAvancados.rl           || null,
+    } : null;
+
     const sicarFinal = enriquecerDados(sicar, sigef, sicarPublico, dadosBanco, { ccir, itr });
 
     const coordLat = lat || sicarFinal?.lat || sigef?.lat || dadosBanco?.lat || null;
