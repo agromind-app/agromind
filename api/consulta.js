@@ -111,6 +111,7 @@ async function buscarDadosBanco(carNorm) {
 }
 
 // ─── WORKER DE DADOS AVANÇADO ────────────────────────────────────
+// Agora retorna o objeto completo (incluindo gps/car resolvido), não só "dados"
 async function buscarDadosAvancados({ car, ccir, itr, lat, lng }) {
   try {
     const resp = await fetch(DADOS_URL, {
@@ -122,7 +123,7 @@ async function buscarDadosAvancados({ car, ccir, itr, lat, lng }) {
     if (!resp.ok) return null;
     const data = await resp.json();
     if (!data.sucesso) return null;
-    return data.dados || null;
+    return data; // <- retorna o payload completo: { sucesso, encontrado, car, gps, dados, debug }
   } catch (e) {
     console.log("[DADOS_WORKER] erro:", e.message);
     return null;
@@ -141,7 +142,6 @@ async function consultarSICARProxy(typeName, filtro) {
 // ─── API PÚBLICA SICAR — retorna mais dados ───────────────────────
 async function buscarSICARPublico(car) {
   try {
-    // Endpoint interno do SICAR público (mesmo que o site usa)
     const url = `https://consultapublica.car.gov.br/publico/imoveis/buscarImovelSimples?num_car=${encodeURIComponent(car)}`;
     const resp = await fetch(`${PROXY_URL}?url=${encodeURIComponent(url)}`, {
       signal: AbortSignal.timeout(10000),
@@ -150,7 +150,6 @@ async function buscarSICARPublico(car) {
     const data = await resp.json();
     if (!data || data.error) return null;
 
-    // Tenta outro endpoint que retorna CPF/nome do proprietário
     const url2 = `https://consultapublica.car.gov.br/publico/imoveis/buscarAnexos?id_imovel=${data.id_imovel || data.id || ""}`;
     let anexos = null;
     try {
@@ -169,19 +168,6 @@ async function buscarSICARPublico(car) {
       area:         data.num_area ? `${Number(data.num_area).toLocaleString("pt-BR",{maximumFractionDigits:1})} ha` : null,
       situacao:     data.ind_status || data.situacao || null,
     };
-  } catch { return null; }
-}
-
-// ─── SNCR/INCRA — dados do imóvel rural ──────────────────────────
-async function buscarSNCR(car, ccir) {
-  try {
-    // SNCR endpoint público
-    const termo = ccir || car;
-    const url = `https://sncr.serpro.gov.br/sncr/publico/externo/consultarImovel.jsf?numCCIR=${encodeURIComponent(ccir || "")}`;
-    // Tenta API REST do SNCR
-    const url2 = `https://servicodados.ibge.gov.br/api/v1/localidades/estados`;
-    // Por ora retorna null — SNCR não tem API pública REST acessível
-    return null;
   } catch { return null; }
 }
 
@@ -262,7 +248,6 @@ function parsearFeature(feat, overrides = {}) {
 function enriquecerDados(sicar, sigef, sicarPublico, banco, extras = {}) {
   const base = sicar?.encontrado ? { ...sicar } : {};
 
-  // Preenche campos vazios com dados do SIGEF
   if (sigef?.encontrado) {
     if (!base.nome || base.nome === "Imóvel Rural") base.nome = sigef.denominacao || base.nome;
     if (!base.ccir) base.ccir = sigef.ccir;
@@ -272,16 +257,19 @@ function enriquecerDados(sicar, sigef, sicarPublico, banco, extras = {}) {
     if (!base.proprietario) base.proprietario = sigef.proprietario;
   }
 
-  // Preenche com dados do SICAR público
   if (sicarPublico) {
     if (!base.nome || base.nome === "Imóvel Rural") base.nome = sicarPublico.nome || base.nome;
     if (!base.proprietario) base.proprietario = sicarPublico.proprietario;
     if (!base.ccir) base.ccir = sicarPublico.ccir;
     if (!base.nirf) base.nirf = sicarPublico.nirf;
     if (!base.municipio) base.municipio = sicarPublico.municipio;
+    if (!base.area) base.area = sicarPublico.area;
+    if (!base.modulos) base.modulos = sicarPublico.modulos;
+    if (!base.app) base.app = sicarPublico.app;
+    if (!base.rl) base.rl = sicarPublico.rl;
+    if (!base.uf) base.uf = sicarPublico.uf;
   }
 
-  // Preenche com dados do banco interno
   if (banco) {
     if (!base.nome || base.nome === "Imóvel Rural") base.nome = banco.nome || base.nome;
     if (!base.proprietario) base.proprietario = banco.proprietario;
@@ -291,11 +279,9 @@ function enriquecerDados(sicar, sigef, sicarPublico, banco, extras = {}) {
     if (!base.area) base.area = banco.area;
   }
 
-  // Extras passados diretamente
   if (!base.ccir) base.ccir = extras.ccir || null;
   if (!base.nirf) base.nirf = extras.itr || null;
 
-  // Se não achou no SICAR mas tem dados do banco
   if (!sicar?.encontrado && banco?.car) {
     return {
       encontrado:    true,
@@ -314,6 +300,30 @@ function enriquecerDados(sicar, sigef, sicarPublico, banco, extras = {}) {
       proprietario:  base.proprietario || null,
       lat:           banco.lat || null,
       lng:           banco.lng || null,
+      situacao:      "AT",
+      situacaoLabel: "Ativo",
+    };
+  }
+
+  // Se não achou nada no SICAR/SIGEF/banco mas o Worker (sicarPublico) trouxe algo via GPS
+  if (!sicar?.encontrado && sicarPublico && (sicarPublico.nome || sicarPublico.area || sicarPublico.municipio)) {
+    return {
+      encontrado:    true,
+      fonteWorker:   true,
+      car:           extras.carWorker || null,
+      nome:          base.nome || "Imóvel Rural",
+      municipio:     base.municipio || "",
+      uf:            base.uf || "",
+      area:          base.area || null,
+      areaHa:        null,
+      app:           base.app || null,
+      rl:            base.rl || null,
+      modulos:       base.modulos || null,
+      ccir:          base.ccir || null,
+      nirf:          base.nirf || null,
+      proprietario:  base.proprietario || null,
+      lat:           extras.latWorker || null,
+      lng:           extras.lngWorker || null,
       situacao:      "AT",
       situacaoLabel: "Ativo",
     };
@@ -444,12 +454,24 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Busca em paralelo: SICAR + SIGEF + Worker Avançado ───────
-    const [sicar, sigef, dadosAvancados] = await Promise.all([
+    // ── Busca no Worker AVANÇADO primeiro se for busca por GPS ──────
+    // (precisamos do CAR resolvido pelo Worker ANTES de chamar buscarSICAR)
+    let workerResult = null;
+    if (!carFinal && lat && lng) {
+      workerResult = await buscarDadosAvancados({ car: carFinal, ccir, itr, lat, lng });
+      if (workerResult?.car) {
+        carFinal = workerResult.car.toUpperCase().replace(/\./g,"-").replace(/[^A-Z0-9\-]/g,"");
+      }
+    }
+
+    // ── Busca em paralelo: SICAR + SIGEF + Worker Avançado (se ainda não buscou) ───────
+    const [sicar, sigef, workerResult2] = await Promise.all([
       buscarSICAR({ car: carFinal, ccir, itr, proprietario, nomeFazenda }),
       buscarSIGEF({ car: carFinal, ccir }),
-      buscarDadosAvancados({ car: carFinal, ccir, itr, lat, lng }),
+      workerResult ? Promise.resolve(workerResult) : buscarDadosAvancados({ car: carFinal, ccir, itr, lat, lng }),
     ]);
+
+    const dadosWorker = workerResult2; // payload completo: { sucesso, encontrado, car, gps, dados, debug }
 
     // Banco do CAR encontrado pelo SICAR
     if (!dadosBanco && (sicar?.car || carFinal)) {
@@ -458,7 +480,9 @@ export default async function handler(req, res) {
     }
 
     // ── Enriquece com todas as fontes ─────────────────────────────
-    // Usa dados avançados do Worker como fonte extra
+    const dadosAvancados = dadosWorker?.dados || null;
+    const gpsInfo = dadosWorker?.gps || null;
+
     const sicarPublico = dadosAvancados ? {
       fonte: "WORKER_AVANCADO",
       nome:         dadosAvancados.nome        || null,
@@ -473,11 +497,16 @@ export default async function handler(req, res) {
       rl:           dadosAvancados.rl           || null,
     } : null;
 
-    const sicarFinal = enriquecerDados(sicar, sigef, sicarPublico, dadosBanco, { ccir, itr });
+    const sicarFinal = enriquecerDados(sicar, sigef, sicarPublico, dadosBanco, {
+      ccir, itr,
+      carWorker: dadosWorker?.car || carFinal || null,
+      latWorker: dadosAvancados?.lat || lat || null,
+      lngWorker: dadosAvancados?.lng || lng || null,
+    });
 
-    const coordLat = lat || sicarFinal?.lat || sigef?.lat || dadosBanco?.lat || null;
-    const coordLng = lng || sicarFinal?.lng || sigef?.lng || dadosBanco?.lng || null;
-    const carRetorno = carFinal || sicarFinal?.car || null;
+    const coordLat = lat || sicarFinal?.lat || sigef?.lat || dadosBanco?.lat || dadosAvancados?.lat || null;
+    const coordLng = lng || sicarFinal?.lng || sigef?.lng || dadosBanco?.lng || dadosAvancados?.lng || null;
+    const carRetorno = carFinal || sicarFinal?.car || dadosWorker?.car || null;
 
     const score = calcularScore({ sicar: sicarFinal, sigef });
 
@@ -489,11 +518,13 @@ export default async function handler(req, res) {
       sigef,
       score,
       cruzamento,
+      gps:          gpsInfo,
       fontes: {
         sicar:        sicar?.encontrado || false,
         sigef:        sigef?.encontrado || false,
         sicarPublico: !!sicarPublico,
         banco:        !!dadosBanco,
+        gps:          !!gpsInfo,
       },
       atualizadoEm: new Date().toISOString(),
     };
