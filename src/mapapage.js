@@ -26,6 +26,7 @@ const CAMADAS = [
 ];
 
 const TIPOS_BUSCA = [
+  { id:"cpf",          label:"CPF",          icon:"🪪", placeholder:"Ex: 123.456.789-00" },
   { id:"car",          label:"CAR",          icon:"📋", placeholder:"Ex: MA-2107357-003AE88CE99B42349CC04EC7C12DFBC6" },
   { id:"itr",          label:"ITR",          icon:"💰", placeholder:"Ex: 12.345.678-9" },
   { id:"ccir",         label:"CCIR",         icon:"📄", placeholder:"Ex: 110.035.031.500-2" },
@@ -44,7 +45,6 @@ const FAZENDA_MOCK = {
 };
 
 // ─── DADOS EXTRAS DO DOCUMENTO UPLOADADO ─────────────────────────
-// Armazena dados lidos do CCIR/Matrícula pelo usuário
 let dadosDocumento = {};
 
 function dadosParaFazenda(dados) {
@@ -78,31 +78,24 @@ function dadosParaFazenda(dados) {
 // ─── LEITOR DE PDF/TEXTO DO CCIR ─────────────────────────────────
 function extrairDadosDoCCIR(texto) {
   const dados = {};
-  // Proprietário
   const propMatch = texto.match(/(?:proprietário|possuidor|nome)[:\s]+([A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][^\n\r,]{5,60})/i);
   if (propMatch) dados.proprietario = propMatch[1].trim();
 
-  // CCIR
   const ccirMatch = texto.match(/(?:CCIR|certificado)[:\s#Nº°]*([0-9]{3}[\.\-]?[0-9]{3}[\.\-]?[0-9]{3}[\.\-]?[0-9]{3}[\.\-]?[0-9])/i);
   if (ccirMatch) dados.ccir = ccirMatch[1].trim();
 
-  // Nome da fazenda
   const fazMatch = texto.match(/(?:denominação|imóvel|fazenda|sítio|chácara)[:\s]+([A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][^\n\r,]{3,50})/i);
   if (fazMatch) dados.nomeFazenda = fazMatch[1].trim();
 
-  // NIRF/ITR
   const nirfMatch = texto.match(/(?:NIRF|ITR)[:\s#Nº°]*([0-9]{2,3}[\.\-]?[0-9]{3}[\.\-]?[0-9]{3}[\.\-]?[0-9])/i);
   if (nirfMatch) dados.nirf = nirfMatch[1].trim();
 
-  // Matrícula
   const matMatch = texto.match(/(?:matrícula|registro)[:\s#Nº°]*([0-9]{1,6})/i);
   if (matMatch) dados.matricula = matMatch[1].trim();
 
-  // Área
   const areaMatch = texto.match(/(?:área total|área)[:\s]+([\d.,]+)\s*(?:ha|hectares)/i);
   if (areaMatch) dados.area = `${areaMatch[1]} ha`;
 
-  // Município
   const munMatch = texto.match(/(?:município|localizado em)[:\s]+([A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][^\n\r,]{3,40})/i);
   if (munMatch) dados.municipio = munMatch[1].trim();
 
@@ -356,7 +349,7 @@ export default function MapaPage({ dadosConsulta }) {
   const [vizinhoDrawer, setVizinhoDrawer] = useState(null);
   const [modoMedicao, setModoMedicao] = useState(null);
   const [resultadoMedicao, setResultadoMedicao] = useState(null);
-  const [docUpload, setDocUpload] = useState(null); // dados do documento uploadado
+  const [docUpload, setDocUpload] = useState(null);
   const [uploadandoDoc, setUploadandoDoc] = useState(false);
 
   const fileRef = useRef(null);
@@ -380,13 +373,11 @@ export default function MapaPage({ dadosConsulta }) {
     if (!file) return;
     setUploadandoDoc(true);
     try {
-      // Lê como texto
       const texto = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
         reader.onerror = reject;
         if (file.type === "application/pdf") {
-          // Para PDF, lê como ArrayBuffer e extrai texto básico
           reader.readAsArrayBuffer(file);
         } else {
           reader.readAsText(file, "UTF-8");
@@ -395,10 +386,8 @@ export default function MapaPage({ dadosConsulta }) {
 
       let textoExtraido = "";
       if (file.type === "application/pdf") {
-        // Extrai texto básico do PDF (sem biblioteca externa)
         const arr = new Uint8Array(texto);
         const str = arr.reduce((acc, byte) => acc + String.fromCharCode(byte), "");
-        // Extrai strings legíveis do PDF
         const matches = str.match(/[\x20-\x7E\xC0-\xFF]{4,}/g) || [];
         textoExtraido = matches.join(" ");
       } else {
@@ -409,7 +398,6 @@ export default function MapaPage({ dadosConsulta }) {
       dadosDocumento = dadosExtraidos;
       setDocUpload(dadosExtraidos);
 
-      // Atualiza a fazenda com os novos dados
       if (dadosReais) {
         const fazendaAtualizada = dadosParaFazenda(dadosReais);
         if (fazendaAtualizada) setFazenda(fazendaAtualizada);
@@ -427,7 +415,6 @@ export default function MapaPage({ dadosConsulta }) {
     setUploadandoDoc(false);
   };
 
-  // ── Medição avançada
   const [tamanhoDesenho, setTamanhoDesenho] = useState("");
   const [unidadeDesenho, setUnidadeDesenho] = useState("ha");
   const desenhoLayerRef = useRef(null);
@@ -459,7 +446,6 @@ export default function MapaPage({ dadosConsulta }) {
     if (desenhoLayerRef.current) { try { map.removeLayer(desenhoLayerRef.current); } catch {} desenhoLayerRef.current = null; }
   };
 
-  // ── Desfazer último ponto
   const desfazerPonto = () => {
     const map = leafletMap.current, L = window.L;
     if (!map || !L || !medicaoPontosRef.current.length) return;
@@ -478,7 +464,6 @@ export default function MapaPage({ dadosConsulta }) {
     } else { setResultadoMedicao(null); }
   };
 
-  // ── Fechar polígono (finalizar área)
   const fecharPoligono = () => {
     const pontos = medicaoPontosRef.current;
     if (pontos.length < 3) { alert("Marque pelo menos 3 pontos."); return; }
@@ -507,7 +492,6 @@ export default function MapaPage({ dadosConsulta }) {
     if (leafletMap.current) leafletMap.current.getContainer().style.cursor = "";
   };
 
-  // ── Medir área do CAR atual — mostra popup com área + perímetro + coordenadas
   const medirAreaCAR = () => {
     const geom = dadosReais?.sicar?.geometria || dadosReais?.sigef?.geometria;
     if (!geom) { alert("Carregue um imóvel primeiro."); return; }
@@ -515,11 +499,9 @@ export default function MapaPage({ dadosConsulta }) {
       const coords = geom.type === "MultiPolygon" ? geom.coordinates[0][0] : geom.coordinates[0];
       const pontos = coords.map(c => [c[1], c[0]]);
       const ha = calcularAreaHa(pontos);
-      // Perímetro
       let perM = 0;
       for (let i = 0; i < pontos.length - 1; i++) perM += calcularDistanciaM(pontos[i][0],pontos[i][1],pontos[i+1][0],pontos[i+1][1]);
       const perKm = (perM / 1000).toFixed(3);
-      // Centroide
       const lats = pontos.map(p=>p[0]), lngs = pontos.map(p=>p[1]);
       const centLat = ((Math.min(...lats)+Math.max(...lats))/2).toFixed(6);
       const centLng = ((Math.min(...lngs)+Math.max(...lngs))/2).toFixed(6);
@@ -531,7 +513,6 @@ export default function MapaPage({ dadosConsulta }) {
         m2: (ha*10000).toFixed(0),
         acres: (ha*2.47105).toFixed(2),
       });
-      // Popup no mapa
       if (leafletMap.current && window.L) {
         const map = leafletMap.current, L = window.L;
         const center = [parseFloat(centLat), parseFloat(centLng)];
@@ -549,15 +530,12 @@ export default function MapaPage({ dadosConsulta }) {
     } catch { alert("Não foi possível calcular."); }
   };
 
-  // ── Desenhar área por tamanho
   const desenharPorTamanho = () => {
     const val = parseFloat(tamanhoDesenho.replace(",","."));
     if (!val || val <= 0) { alert("Digite um valor válido."); return; }
     const map = leafletMap.current, L = window.L;
     if (!map || !L) return;
-    // Converte para ha
     const ha = unidadeDesenho === "m2" ? val / 10000 : unidadeDesenho === "alq" ? val * 2.42 : val;
-    // Calcula lado do quadrado equivalente
     const ladoM = Math.sqrt(ha * 10000);
     const ladoGrau = ladoM / 111320;
     const center = map.getCenter();
@@ -593,7 +571,6 @@ export default function MapaPage({ dadosConsulta }) {
       let dist = 0; for (let i = 0; i < pontos.length-1; i++) dist += calcularDistanciaM(pontos[i][0],pontos[i][1],pontos[i+1][0],pontos[i+1][1]);
       setResultadoMedicao({ tipo:"distancia", valor:formatarDistancia(dist), pontos:pontos.length });
     }
-    // ✅ Área: infinitos pontos, atualiza a cada clique
     if (modoMedicao === "area") {
       if (pontos.length >= 2) {
         const drawLayer = pontos.length >= 3
@@ -678,9 +655,8 @@ export default function MapaPage({ dadosConsulta }) {
     adicionarMarcador(map, L, center.lat, center.lng, dados);
     map.fitBounds(bounds, { padding:[40,40] });
 
-    // ✅ Clique no polígono CAR → mostra área + perímetro + coordenadas (só fora do modo medição)
     geoLayer.on("click", (e) => {
-      if (modoMedicaoRef.current) return; // não abre popup durante medição
+      if (modoMedicaoRef.current) return;
       L.DomEvent.stopPropagation(e);
       try {
         const coords = geometria.type === "MultiPolygon" ? geometria.coordinates[0][0] : geometria.coordinates[0];
@@ -708,7 +684,6 @@ export default function MapaPage({ dadosConsulta }) {
       } catch {}
     });
 
-    // ✅ Vizinhos automáticos após 1s
     const car = dados.car || dados.sicar?.car;
     if (car && center.lat && center.lng) {
       setTimeout(async () => {
@@ -757,6 +732,7 @@ export default function MapaPage({ dadosConsulta }) {
       if(tipoBusca==="gps"){const gps=val.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);if(!gps){setErroBusca("GPS inválido. Use: -11.8456, -55.1987");setBuscando(false);return;}body={lat:parseFloat(gps[1]),lng:parseFloat(gps[2])};}
       else if(tipoBusca==="ccir"){body={ccir:val};}else if(tipoBusca==="itr"){body={itr:val};}
       else if(tipoBusca==="proprietario"){body={proprietario:val};}else if(tipoBusca==="fazenda"){body={nomeFazenda:val};}
+      else if(tipoBusca==="cpf"){body={cpf:val};}
       else{body={car:val};}
       const resp=await fetch("/api/consulta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const dados=await resp.json();
@@ -790,7 +766,7 @@ export default function MapaPage({ dadosConsulta }) {
 
   return (
     <div className="mapa-container" style={{display:"flex",height:"calc(100vh - 64px)",overflow:"hidden"}}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:768px){.mapa-container{flex-direction:column!important;height:auto!important;overflow-y:auto!important;}.mapa-painel-esq{width:100%!important;border-right:none!important;border-bottom:1px solid #1e3a1e!important;}.mapa-centro{width:100%!important;height:72vw!important;min-height:260px!important;max-height:400px!important;flex:none!important;}.mapa-painel-dir{display:none!important;}}`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:768px){.mapa-container{flex-direction:column!important;height:auto!important;overflow-y:auto!important;}.mapa-painel-esq{width:100%!important;border-right:none!important;border-bottom:1px solid #1e3a1e!important;}.mapa-centro{width:100%!important;height:72vw!important;min-height:260px!important;max-height:400px!important;flex:none!important;}.mapa-painel-dir{display:none!important;}.mapa-score-flutuante{display:none!important;}.mapa-status-flutuante{display:none!important;}.mapa-legenda-flutuante{display:none!important;}}`}</style>
 
       {/* ── PAINEL ESQUERDO ── */}
       <div className="mapa-painel-esq" style={{width:295,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
@@ -966,7 +942,7 @@ export default function MapaPage({ dadosConsulta }) {
           <div ref={mapRef} style={{flex:1,background:`linear-gradient(135deg,${C.bg},#0d2010)`}}/>
 
           {/* Legenda */}
-          <div style={{position:"absolute",bottom:40,left:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 12px",zIndex:1000}}>
+          <div className="mapa-legenda-flutuante" style={{position:"absolute",bottom:40,left:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 12px",zIndex:1000}}>
             <div style={{fontSize:10,fontWeight:700,color:C.textMuted,marginBottom:6,textTransform:"uppercase"}}>Legenda</div>
             {camadas.filter(c=>c.ativa).map(c=>(<div key={c.id} style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,fontSize:11}}><div style={{width:16,height:4,borderRadius:2,background:c.color,flexShrink:0}}/><span style={{color:C.textMuted}}>{c.label}</span></div>))}
             <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,fontSize:11}}><div style={{width:16,height:4,borderRadius:2,background:C.orange,flexShrink:0}}/><span style={{color:C.textMuted}}>CAR Vizinhos</span></div>
@@ -974,7 +950,7 @@ export default function MapaPage({ dadosConsulta }) {
           </div>
 
           {/* Score */}
-          <div style={{position:"absolute",top:70,right:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${scoreCor}40`,borderRadius:12,padding:"12px 14px",zIndex:1000,textAlign:"center",minWidth:110}}>
+          <div className="mapa-score-flutuante" style={{position:"absolute",top:70,right:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${scoreCor}40`,borderRadius:12,padding:"12px 14px",zIndex:1000,textAlign:"center",minWidth:110}}>
             <div style={{fontSize:11,color:C.textMuted,marginBottom:4}}>🤖 Score IA</div>
             <div style={{fontSize:30,fontWeight:900,color:scoreCor,lineHeight:1}}>{scoreValor}</div>
             <div style={{fontSize:10,color:C.textMuted}}>/100</div>
@@ -989,7 +965,7 @@ export default function MapaPage({ dadosConsulta }) {
           </div>)}
 
           {/* Status */}
-          <div style={{position:"absolute",top:70,left:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${C.accent}40`,borderRadius:10,padding:"10px 12px",zIndex:1000}}>
+          <div className="mapa-status-flutuante" style={{position:"absolute",top:70,left:16,background:`${C.surface}ee`,backdropFilter:"blur(12px)",border:`1px solid ${C.accent}40`,borderRadius:10,padding:"10px 12px",zIndex:1000}}>
             <div style={{fontSize:11,fontWeight:700,color:C.accent,marginBottom:4}}>{temDadosReais?"📡 Dados Reais":"✅ Status"}</div>
             <div style={{fontSize:11,color:fazenda.embargo?C.red:C.textMuted,cursor:"pointer"}} onClick={()=>setCampoPainel("ibama")}>{fazenda.embargo?"⛔ Embargo ativo":"✅ Sem embargo"}</div>
             <div style={{fontSize:11,color:fazenda.prodes?C.orange:C.textMuted,cursor:"pointer"}} onClick={()=>setCampoPainel("prodes")}>{fazenda.prodes?"🔴 Alerta PRODES":"📡 Sem alerta"}</div>
